@@ -13,9 +13,13 @@ const initialState = {
 
   // Game
   gridSize: 20,
+  mode: 'classic',
+  duration: 180,
   snakes: [],
   food: [],
   tick: 0,
+  timeLeft: null,
+  respawning: {},
 
   // Result
   winnerId: null,
@@ -58,22 +62,33 @@ export function useGameState() {
       }))
     })
 
-    socket.on('game_started', ({ gridSize, tickMs, snakes, food }) => {
+    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration }) => {
       setState((prev) => ({
         ...prev,
         status: 'playing',
         gridSize,
+        mode: mode || 'classic',
+        duration: duration || 180,
         snakes,
         food,
         tick: 0,
+        timeLeft: mode === 'timed' ? duration : null,
+        respawning: {},
         winnerId: null,
         winnerName: null,
         rankings: [],
       }))
     })
 
-    socket.on('game_tick', ({ tick, snakes, food }) => {
-      setState((prev) => ({ ...prev, tick, snakes, food }))
+    socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning }) => {
+      setState((prev) => ({
+        ...prev,
+        tick,
+        snakes,
+        food,
+        ...(timeLeft !== undefined && { timeLeft }),
+        ...(respawning !== undefined && { respawning }),
+      }))
     })
 
     socket.on('game_over', ({ winnerId, winnerName, rankings }) => {

@@ -35,6 +35,8 @@ function createRoom(hostId) {
     settings: {
       gridSize: config.gridSize,
       tickMs: config.tickMs,
+      mode: 'classic',   // 'classic' | 'timed'
+      duration: 180,     // seconds (timed mode only)
     },
     game: null,
     cleanupTimer: null,

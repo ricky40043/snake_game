@@ -164,8 +164,11 @@ function registerRoomHandlers(io, socket, socketMap) {
 
     const g = Math.round(Number(settings.gridSize))
     const t = Math.round(Number(settings.tickMs))
+    const d = Math.round(Number(settings.duration))
     if (g >= 10 && g <= 40) room.settings.gridSize = g
     if (t >= 60 && t <= 250) room.settings.tickMs = t
+    if (settings.mode === 'classic' || settings.mode === 'timed') room.settings.mode = settings.mode
+    if (d >= 30 && d <= 600) room.settings.duration = d
 
     io.to(roomId).emit('settings_updated', { settings: room.settings })
   })
