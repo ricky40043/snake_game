@@ -27,6 +27,9 @@ const initialState = {
   winnerName: null,
   rankings: [],
 
+  // Respawn preview (timed mode — only for myPlayer, 3s before respawn)
+  respawnPreview: null, // { body, direction, color } | null
+
   error: null,
 }
 
@@ -110,6 +113,21 @@ export function useGameState() {
       }))
     })
 
+    socket.on('respawn_preview', ({ playerId, body, direction }) => {
+      setState((prev) => {
+        if (playerId !== prev.myPlayerId) return prev
+        const mySnake = prev.snakes.find((s) => s.playerId === playerId)
+        return { ...prev, respawnPreview: { body, direction, color: mySnake?.color || '#22c55e' } }
+      })
+    })
+
+    socket.on('player_respawned', ({ playerId }) => {
+      setState((prev) => ({
+        ...prev,
+        ...(prev.myPlayerId === playerId ? { respawnPreview: null } : {}),
+      }))
+    })
+
     socket.on('game_over', ({ winnerId, winnerName, rankings }) => {
       setState((prev) => ({
         ...prev,
@@ -117,6 +135,7 @@ export function useGameState() {
         winnerId,
         winnerName,
         rankings,
+        respawnPreview: null,
       }))
     })
 
@@ -130,6 +149,7 @@ export function useGameState() {
         winnerId: null,
         winnerName: null,
         rankings: [],
+        respawnPreview: null,
       }))
     })
 
@@ -162,6 +182,8 @@ export function useGameState() {
       socket.off('game_resumed')
       socket.off('game_resized')
       socket.off('pause_speed_updated')
+      socket.off('respawn_preview')
+      socket.off('player_respawned')
       socket.off('error')
       socket.off('connect_error')
     }

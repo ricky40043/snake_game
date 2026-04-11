@@ -232,6 +232,7 @@ export default function Game() {
               gridSize={state.gridSize || 20}
               myPlayerId={state.myPlayerId}
               viewport={viewport}
+              previewSnake={state.respawnPreview}
             />
 
             {/* ── Mobile viewport toggle button ─────────────────── */}
@@ -289,7 +290,7 @@ export default function Game() {
             )}
 
             {/* ── Respawn overlay (timed mode) ───────────────────── */}
-            {!state.paused && isRespawning && (
+            {!state.paused && isRespawning && !state.respawnPreview && (
               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-10">
                 <div className="text-center">
                   <div className="text-5xl mb-3">💀</div>
@@ -298,6 +299,15 @@ export default function Game() {
                     {respawnCountdown}
                   </div>
                   <div className="text-gray-400 text-sm mt-1">秒後復活</div>
+                </div>
+              </div>
+            )}
+            {/* ── Respawn preview hint (last 3s — canvas visible) ── */}
+            {!state.paused && isRespawning && state.respawnPreview && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                <div className={`flex items-center gap-2 bg-black/60 text-white text-sm px-4 py-2 rounded-full font-semibold border border-white/20 ${respawnCountdown <= 1 ? 'animate-pulse' : ''}`}>
+                  <span className="text-green-400 font-mono font-bold text-base">{respawnCountdown}s</span>
+                  <span>後復活 — 箭頭為出生方向</span>
                 </div>
               </div>
             )}

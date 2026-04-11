@@ -156,6 +156,7 @@ function startGame(io, roomId) {
     food,
     deathLog: [],        // Mode 1: [{ playerId, length, score }], order = death order
     respawnQueue: {},    // Mode 2: { playerId: respawnAtMs }
+    previewQueue: {},    // Mode 2: { playerId: previewAtMs } — 3s before respawn
     startTime: Date.now(),
     paused: false,
     intervalId: null,
@@ -194,7 +195,7 @@ function tick(io, roomId) {
     }
   }
 
-  // ── Mode 2: handle respawns ────────────────────────────────────────
+  // ── Mode 2: handle respawns + previews ───────────────────────────
   if (mode === 'timed') {
     const now = Date.now()
     for (const [pid, respawnAt] of Object.entries(game.respawnQueue)) {
@@ -202,6 +203,27 @@ function tick(io, roomId) {
         respawnPlayer(game, pid)
         delete game.respawnQueue[pid]
         io.to(roomId).emit('player_respawned', { playerId: pid })
+      }
+    }
+    // 3s before respawn: calculate spawn position and notify only that player
+    for (const [pid, previewAt] of Object.entries(game.previewQueue)) {
+      if (now >= previewAt) {
+        const snake = game.snakes[pid]
+        if (snake && !snake.alive && !snake.pendingRespawn) {
+          const pos = findRespawnPos(game.snakes, game.food, game.gridSize)
+          if (pos) {
+            snake.pendingRespawn = pos
+            const player = room.players.get(pid)
+            if (player?.socketId) {
+              io.to(player.socketId).emit('respawn_preview', {
+                playerId: pid,
+                body: buildInitialBody(pos.x, pos.y, pos.dir),
+                direction: pos.dir,
+              })
+            }
+          }
+        }
+        delete game.previewQueue[pid]
       }
     }
   }
@@ -279,9 +301,11 @@ function tick(io, roomId) {
       snake.alive = false
       game.deathLog.push({ playerId: id, length: lengthAtDeath, score: snake.score })
     } else {
-      // Timed: queue respawn
+      // Timed: queue respawn + preview 3s before
       snake.alive = false
-      game.respawnQueue[id] = Date.now() + RESPAWN_DELAY_MS
+      const deathNow = Date.now()
+      game.respawnQueue[id] = deathNow + RESPAWN_DELAY_MS
+      game.previewQueue[id] = deathNow + RESPAWN_DELAY_MS - 3000
     }
 
     const player = room.players.get(id)
@@ -337,12 +361,13 @@ function tick(io, roomId) {
 function respawnPlayer(game, playerId) {
   const snake = game.snakes[playerId]
   if (!snake) return
-  const pos = findRespawnPos(game.snakes, game.food, game.gridSize)
+  // Use pre-calculated position from preview; fall back to fresh calculation
+  const pos = snake.pendingRespawn || findRespawnPos(game.snakes, game.food, game.gridSize)
+  snake.pendingRespawn = null
   if (!pos) return
-  const dir = pos.dir
-  snake.body = buildInitialBody(pos.x, pos.y, dir)
-  snake.direction = dir
-  snake.nextDirection = dir
+  snake.body = buildInitialBody(pos.x, pos.y, pos.dir)
+  snake.direction = pos.dir
+  snake.nextDirection = pos.dir
   snake.alive = true
 }
 
