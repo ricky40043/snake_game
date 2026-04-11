@@ -129,6 +129,7 @@ function startGame(io, roomId) {
     deathLog: [],        // Mode 1: [{ playerId, length, score }], order = death order
     respawnQueue: {},    // Mode 2: { playerId: respawnAtMs }
     startTime: Date.now(),
+    paused: false,
     intervalId: null,
   }
   room.status = 'playing'
@@ -140,6 +141,7 @@ function startGame(io, roomId) {
     duration: room.settings.duration,
     snakes: Object.values(snakes),
     food,
+    paused: false,
   })
 
   room.game.intervalId = setInterval(() => tick(io, roomId), tickMs)
@@ -409,9 +411,95 @@ function endGame(io, roomId) {
   roomService.scheduleCleanup(roomId)
 }
 
+// ── Pause / Resume ────────────────────────────────────────────────────────────
+function pauseGame(io, roomId) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game || room.game.paused) return
+  const game = room.game
+  game.paused = true
+  clearInterval(game.intervalId)
+  game.intervalId = null
+  io.to(roomId).emit('game_paused', {
+    gridSize: game.gridSize,
+    tickMs: game.tickMs,
+  })
+}
+
+function resumeGame(io, roomId) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game || !room.game.paused) return
+  const game = room.game
+  game.paused = false
+  game.intervalId = setInterval(() => tick(io, roomId), game.tickMs)
+  io.to(roomId).emit('game_resumed')
+}
+
+// ── Resize map during pause (enlarge only — no death risk) ────────────────────
+function resizeGameMap(io, roomId, newGridSize) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game) return
+  const game = room.game
+  const oldSize = game.gridSize
+  if (newGridSize < oldSize || newGridSize > 60) return // only enlarge
+
+  const offset = Math.floor((newGridSize - oldSize) / 2)
+
+  for (const snake of Object.values(game.snakes)) {
+    snake.body = snake.body.map((seg) => ({
+      x: Math.min(newGridSize - 1, seg.x + offset),
+      y: Math.min(newGridSize - 1, seg.y + offset),
+    }))
+  }
+  game.food = game.food.map((f) => ({
+    x: Math.min(newGridSize - 1, f.x + offset),
+    y: Math.min(newGridSize - 1, f.y + offset),
+  }))
+
+  game.gridSize = newGridSize
+  room.settings.gridSize = newGridSize
+
+  io.to(roomId).emit('game_resized', {
+    gridSize: newGridSize,
+    snakes: Object.values(game.snakes).map((s) => ({
+      playerId: s.playerId, body: s.body, color: s.color,
+      name: s.name, alive: s.alive, score: s.score,
+    })),
+    food: game.food,
+  })
+}
+
+// ── Update speed during pause ─────────────────────────────────────────────────
+function updatePauseSpeed(io, roomId, newTickMs) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game) return
+  const t = Math.round(newTickMs)
+  if (t < 60 || t > 250) return
+  room.game.tickMs = t
+  room.settings.tickMs = t
+  io.to(roomId).emit('pause_speed_updated', { tickMs: t })
+}
+
+// ── Force end game ────────────────────────────────────────────────────────────
+function endGameNow(io, roomId) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game) return
+  if (room.game.paused) {
+    room.game.paused = false // don't need to clear interval (already cleared)
+  } else {
+    clearInterval(room.game.intervalId)
+    room.game.intervalId = null
+  }
+  endGame(io, roomId)
+}
+
 module.exports = {
   startGame,
   handleDirectionChange,
   killSnakeByDisconnect,
+  pauseGame,
+  resumeGame,
+  resizeGameMap,
+  updatePauseSpeed,
+  endGameNow,
   endGame,
 }

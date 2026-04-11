@@ -21,6 +21,10 @@ function registerSocketHandlers(io) {
       if (!room) return
 
       if (room.status === 'playing') {
+        // If game was paused and host disconnected, auto-resume
+        if (room.game?.paused && room.hostId === playerId) {
+          gameService.resumeGame(io, roomId)
+        }
         // Kill snake immediately on disconnect
         gameService.killSnakeByDisconnect(roomId, playerId)
         roomService.setPlayerOffline(roomId, playerId)

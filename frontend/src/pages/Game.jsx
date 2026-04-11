@@ -5,6 +5,7 @@ import { getPlayerId, getPlayerName, savePlayerId, getHostId } from '../storage'
 import { useGame } from '../App'
 import GameCanvas from '../components/GameCanvas'
 import GameOver from '../components/GameOver'
+import PausePanel from '../components/PausePanel'
 
 const DIR_MAP = {
   ArrowUp: 'UP', w: 'UP', W: 'UP',
@@ -48,14 +49,32 @@ export default function Game() {
     if (state.status === 'lobby') navigate(`/lobby?room=${roomId}`)
   }, [state.status, roomId, navigate])
 
+  // ── Keyboard: direction + space pause ────────────────────────────────────
   const handleKey = useCallback((e) => {
+    // Ignore if typing in an input
+    const tag = document.activeElement?.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+    // Space: host pause/resume
+    if (e.code === 'Space') {
+      e.preventDefault()
+      if (!state.isHost || state.status !== 'playing') return
+      if (state.paused) {
+        socket.emit('resume_game', { roomId })
+      } else {
+        socket.emit('pause_game', { roomId })
+      }
+      return
+    }
+
+    // Direction keys
     const dir = DIR_MAP[e.key]
     if (!dir) return
     e.preventDefault()
     if (dir === lastDirRef.current) return
     lastDirRef.current = dir
     socket.emit('change_direction', { roomId, direction: dir })
-  }, [roomId])
+  }, [roomId, state.isHost, state.paused, state.status])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -74,9 +93,10 @@ export default function Game() {
   const isRespawning = isTimed && !isAlive && state.respawning?.[state.myPlayerId] !== undefined
   const respawnCountdown = isRespawning ? (state.respawning[state.myPlayerId] ?? 0) : 0
   const alivePlayers = state.snakes.filter((s) => s.alive)
-
-  // Timer color: red when <= 10s
   const timerColor = (state.timeLeft ?? 999) <= 10 ? 'text-red-400 animate-pulse' : 'text-orange-400'
+
+  // Current game settings for PausePanel
+  const gameTickMs = state.settings?.tickMs || 130
 
   return (
     <div className="flex flex-col h-dvh bg-[#0d1117] select-none">
@@ -87,7 +107,11 @@ export default function Game() {
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isTimed ? 'bg-orange-900/40 text-orange-400' : 'bg-green-900/40 text-green-400'}`}>
             {isTimed ? '⏱ 計時' : '🏆 存活'}
           </span>
-          <span className="text-gray-600 text-xs font-mono">{roomId}</span>
+          {state.isHost && state.status === 'playing' && (
+            <span className="text-xs text-gray-600 hidden sm:inline">
+              {state.paused ? '（已暫停）' : '空白鍵暫停'}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 text-xs">
           {isTimed && state.timeLeft !== null && (
@@ -96,12 +120,7 @@ export default function Game() {
             </span>
           )}
           <span className="text-gray-500">存活 {alivePlayers.length}</span>
-          {mySnake && (
-            <span className="text-yellow-400 font-mono">{mySnake.score}分</span>
-          )}
-          {!isAlive && !isRespawning && !isTimed && (
-            <span className="text-red-400 font-semibold">已淘汰</span>
-          )}
+          {mySnake && <span className="text-yellow-400 font-mono">{mySnake.score}分</span>}
         </div>
       </div>
 
@@ -118,8 +137,26 @@ export default function Game() {
             />
           </div>
 
-          {/* Respawn overlay (timed mode) */}
-          {isRespawning && (
+          {/* ── Pause overlays ─────────────────────────────────── */}
+          {state.paused && state.isHost && (
+            <PausePanel
+              roomId={roomId}
+              gameGridSize={state.gridSize || 20}
+              gameTickMs={gameTickMs}
+            />
+          )}
+          {state.paused && !state.isHost && (
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
+              <div className="text-center">
+                <div className="text-5xl mb-3">⏸</div>
+                <div className="text-2xl font-bold text-white">遊戲暫停中</div>
+                <div className="text-gray-400 mt-2 text-sm">等待房主繼續…</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Respawn overlay (timed mode) ───────────────────── */}
+          {!state.paused && isRespawning && (
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-10">
               <div className="text-center">
                 <div className="text-5xl mb-3">💀</div>
@@ -132,7 +169,7 @@ export default function Game() {
             </div>
           )}
 
-          {/* Game over overlay */}
+          {/* ── Game over ─────────────────────────────────────── */}
           {state.status === 'finished' && (
             <GameOver
               winnerId={state.winnerId}
@@ -160,8 +197,7 @@ export default function Game() {
                 return (
                   <div
                     key={s.playerId}
-                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#21262d] last:border-b-0 text-xs
-                      ${!s.alive ? 'opacity-40' : ''}`}
+                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#21262d] last:border-b-0 text-xs ${!s.alive ? 'opacity-40' : ''}`}
                   >
                     <div className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
                     <span className="flex-1 truncate">{s.name}{s.playerId === state.myPlayerId ? ' ★' : ''}</span>

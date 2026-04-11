@@ -20,6 +20,7 @@ const initialState = {
   tick: 0,
   timeLeft: null,
   respawning: {},
+  paused: false,
 
   // Result
   winnerId: null,
@@ -62,7 +63,7 @@ export function useGameState() {
       }))
     })
 
-    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration }) => {
+    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused }) => {
       setState((prev) => ({
         ...prev,
         status: 'playing',
@@ -74,10 +75,27 @@ export function useGameState() {
         tick: 0,
         timeLeft: mode === 'timed' ? duration : null,
         respawning: {},
+        paused: paused || false,
         winnerId: null,
         winnerName: null,
         rankings: [],
       }))
+    })
+
+    socket.on('game_paused', () => {
+      setState((prev) => ({ ...prev, paused: true }))
+    })
+
+    socket.on('game_resumed', () => {
+      setState((prev) => ({ ...prev, paused: false }))
+    })
+
+    socket.on('game_resized', ({ gridSize, snakes, food }) => {
+      setState((prev) => ({ ...prev, gridSize, snakes, food }))
+    })
+
+    socket.on('pause_speed_updated', ({ tickMs }) => {
+      setState((prev) => ({ ...prev, settings: { ...prev.settings, tickMs } }))
     })
 
     socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning }) => {
@@ -134,6 +152,10 @@ export function useGameState() {
       socket.off('game_over')
       socket.off('game_reset')
       socket.off('settings_updated')
+      socket.off('game_paused')
+      socket.off('game_resumed')
+      socket.off('game_resized')
+      socket.off('pause_speed_updated')
       socket.off('error')
       socket.off('connect_error')
     }

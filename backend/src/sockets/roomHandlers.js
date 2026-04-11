@@ -63,6 +63,9 @@ function registerRoomHandlers(io, socket, socketMap) {
       socket.emit('game_started', {
         gridSize: game.gridSize,
         tickMs: game.tickMs,
+        mode: game.mode,
+        duration: room.settings.duration,
+        paused: game.paused || false,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -73,6 +76,9 @@ function registerRoomHandlers(io, socket, socketMap) {
         })),
         food: game.food,
       })
+      if (game.paused) {
+        socket.emit('game_paused', { gridSize: game.gridSize, tickMs: game.tickMs })
+      }
     }
   })
 
@@ -112,6 +118,9 @@ function registerRoomHandlers(io, socket, socketMap) {
       socket.emit('game_started', {
         gridSize: game.gridSize,
         tickMs: game.tickMs,
+        mode: game.mode,
+        duration: room.settings.duration,
+        paused: game.paused || false,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -122,6 +131,9 @@ function registerRoomHandlers(io, socket, socketMap) {
         })),
         food: game.food,
       })
+      if (game.paused) {
+        socket.emit('game_paused', { gridSize: game.gridSize, tickMs: game.tickMs })
+      }
     }
   })
 
