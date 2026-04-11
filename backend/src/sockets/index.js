@@ -2,6 +2,7 @@ const registerRoomHandlers = require('./roomHandlers')
 const registerGameHandlers = require('./gameHandlers')
 const roomService = require('../services/roomService')
 const gameService = require('../services/gameService')
+const reconnectTimers = require('./reconnectTimers')
 
 // socketId -> { roomId, playerId }
 const socketMap = new Map()
@@ -45,17 +46,30 @@ function registerSocketHandlers(io) {
           }
         }
       } else if (room.status === 'waiting') {
-        roomService.removePlayer(roomId, playerId)
-        const updatedRoom = roomService.getRoom(roomId)
-        if (updatedRoom) {
-          io.to(roomId).emit('room_updated', {
-            roomId,
-            players: roomService.getPublicPlayers(updatedRoom),
-            status: updatedRoom.status,
-            settings: updatedRoom.settings,
-            hostId: updatedRoom.hostId,
-          })
-        }
+        roomService.setPlayerOffline(roomId, playerId)
+        const timerKey = `${roomId}:${playerId}`
+        const timerId = setTimeout(() => {
+          reconnectTimers.delete(timerKey)
+          roomService.removePlayer(roomId, playerId)
+          const updatedRoom = roomService.getRoom(roomId)
+          if (updatedRoom) {
+            io.to(roomId).emit('room_updated', {
+              roomId,
+              players: roomService.getPublicPlayers(updatedRoom),
+              status: updatedRoom.status,
+              settings: updatedRoom.settings,
+              hostId: updatedRoom.hostId,
+            })
+          }
+        }, 60000)
+        reconnectTimers.set(timerKey, timerId)
+        io.to(roomId).emit('room_updated', {
+          roomId,
+          players: roomService.getPublicPlayers(room),
+          status: room.status,
+          settings: room.settings,
+          hostId: room.hostId,
+        })
       } else {
         roomService.setPlayerOffline(roomId, playerId)
       }

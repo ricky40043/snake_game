@@ -3,7 +3,7 @@ import { useRef, useEffect, useCallback } from 'react'
 const GRID_COLOR = '#2a2a3f'
 const BG_COLOR = '#11111a'
 
-export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
+export default function GameCanvas({ snakes, food, gridSize, myPlayerId, viewport }) {
   const canvasRef = useRef(null)
 
   const draw = useCallback(() => {
@@ -11,7 +11,13 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const size = canvas.width
-    const tileSize = Math.floor(size / gridSize)
+
+    // When viewport is active, render only a viewport.size × viewport.size window
+    const renderCols = viewport ? viewport.size : gridSize
+    const renderRows = viewport ? viewport.size : gridSize
+    const camX = viewport ? viewport.camX : 0
+    const camY = viewport ? viewport.camY : 0
+    const tileSize = Math.floor(size / renderCols)
 
     // Background
     ctx.fillStyle = BG_COLOR
@@ -20,21 +26,27 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
     // Grid lines
     ctx.strokeStyle = GRID_COLOR
     ctx.lineWidth = 1
-    for (let i = 0; i <= gridSize; i++) {
+    for (let i = 0; i <= renderCols; i++) {
       ctx.beginPath()
       ctx.moveTo(i * tileSize, 0)
-      ctx.lineTo(i * tileSize, gridSize * tileSize)
+      ctx.lineTo(i * tileSize, renderRows * tileSize)
       ctx.stroke()
+    }
+    for (let i = 0; i <= renderRows; i++) {
       ctx.beginPath()
       ctx.moveTo(0, i * tileSize)
-      ctx.lineTo(gridSize * tileSize, i * tileSize)
+      ctx.lineTo(renderCols * tileSize, i * tileSize)
       ctx.stroke()
     }
 
     // Food
     for (const f of food) {
-      const cx = f.x * tileSize + tileSize / 2
-      const cy = f.y * tileSize + tileSize / 2
+      // Skip tiles outside viewport
+      if (viewport && (f.x < camX || f.x >= camX + viewport.size || f.y < camY || f.y >= camY + viewport.size)) continue
+      const rx = f.x - camX
+      const ry = f.y - camY
+      const cx = rx * tileSize + tileSize / 2
+      const cy = ry * tileSize + tileSize / 2
       const r = tileSize * 0.38
       ctx.save()
       ctx.shadowColor = '#f87171'
@@ -59,8 +71,13 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
 
       // Draw body segments
       snake.body.forEach((seg, i) => {
-        const x = seg.x * tileSize + 1
-        const y = seg.y * tileSize + 1
+        // Skip segments outside viewport
+        if (viewport && (seg.x < camX || seg.x >= camX + viewport.size || seg.y < camY || seg.y >= camY + viewport.size)) return
+
+        const rx = seg.x - camX
+        const ry = seg.y - camY
+        const x = rx * tileSize + 1
+        const y = ry * tileSize + 1
         const w = tileSize - 2
         const isHead = i === 0
 
@@ -85,11 +102,18 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
       if (snake.alive && snake.body.length >= 2) {
         const head = snake.body[0]
         const neck = snake.body[1]
+
+        // Skip if head is outside viewport
+        if (viewport && (head.x < camX || head.x >= camX + viewport.size || head.y < camY || head.y >= camY + viewport.size)) {
+          ctx.globalAlpha = 1
+          continue
+        }
+
         const dx = head.x - neck.x
         const dy = head.y - neck.y
 
-        const hx = head.x * tileSize
-        const hy = head.y * tileSize
+        const hx = (head.x - camX) * tileSize
+        const hy = (head.y - camY) * tileSize
         const mid = tileSize / 2
 
         let eye1, eye2
@@ -121,21 +145,26 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
       // "ME" indicator — outline on my snake
       if (isMe && snake.alive) {
         const head = snake.body[0]
-        ctx.globalAlpha = 0.6
-        ctx.strokeStyle = '#fff'
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        if (ctx.roundRect) {
-          ctx.roundRect(head.x * tileSize + 1, head.y * tileSize + 1, tileSize - 2, tileSize - 2, 5)
-        } else {
-          ctx.rect(head.x * tileSize + 1, head.y * tileSize + 1, tileSize - 2, tileSize - 2)
+        // Skip if head is outside viewport
+        if (!viewport || (head.x >= camX && head.x < camX + viewport.size && head.y >= camY && head.y < camY + viewport.size)) {
+          const rx = head.x - camX
+          const ry = head.y - camY
+          ctx.globalAlpha = 0.6
+          ctx.strokeStyle = '#fff'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          if (ctx.roundRect) {
+            ctx.roundRect(rx * tileSize + 1, ry * tileSize + 1, tileSize - 2, tileSize - 2, 5)
+          } else {
+            ctx.rect(rx * tileSize + 1, ry * tileSize + 1, tileSize - 2, tileSize - 2)
+          }
+          ctx.stroke()
         }
-        ctx.stroke()
       }
 
       ctx.globalAlpha = 1
     }
-  }, [snakes, food, gridSize, myPlayerId])
+  }, [snakes, food, gridSize, myPlayerId, viewport])
 
   // Resize canvas to fill container
   useEffect(() => {

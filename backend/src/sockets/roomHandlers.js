@@ -1,5 +1,6 @@
 const roomService = require('../services/roomService')
 const gameService = require('../services/gameService')
+const reconnectTimers = require('./reconnectTimers')
 
 function registerRoomHandlers(io, socket, socketMap) {
   // Host creates a new room
@@ -30,6 +31,12 @@ function registerRoomHandlers(io, socket, socketMap) {
 
     const { player, isRejoin } = result
     const room = roomService.getRoom(roomId)
+
+    const timerKey = `${roomId}:${player.playerId}`
+    if (reconnectTimers.has(timerKey)) {
+      clearTimeout(reconnectTimers.get(timerKey))
+      reconnectTimers.delete(timerKey)
+    }
 
     socket.join(roomId)
     socketMap.set(socket.id, { roomId, playerId: player.playerId })
@@ -97,6 +104,13 @@ function registerRoomHandlers(io, socket, socketMap) {
 
     player.socketId = socket.id
     player.isOnline = true
+
+    const timerKey = `${roomId}:${hostId}`
+    if (reconnectTimers.has(timerKey)) {
+      clearTimeout(reconnectTimers.get(timerKey))
+      reconnectTimers.delete(timerKey)
+    }
+
     socket.join(roomId)
     socketMap.set(socket.id, { roomId, playerId: hostId })
 

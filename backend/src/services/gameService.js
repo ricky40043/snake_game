@@ -131,6 +131,8 @@ function startGame(io, roomId) {
     startTime: Date.now(),
     paused: false,
     intervalId: null,
+    totalPausedMs: 0,
+    pausedAt: null,
   }
   room.status = 'playing'
 
@@ -157,7 +159,7 @@ function tick(io, roomId) {
 
   // ── Mode 2: check timer first ──────────────────────────────────────
   if (mode === 'timed') {
-    const elapsed = Date.now() - game.startTime
+    const elapsed = Date.now() - game.startTime - (game.totalPausedMs || 0)
     if (elapsed >= game.duration) {
       endGame(io, roomId)
       return
@@ -251,7 +253,6 @@ function tick(io, roomId) {
     } else {
       // Timed: queue respawn
       snake.alive = false
-      snake.body = []
       game.respawnQueue[id] = Date.now() + RESPAWN_DELAY_MS
     }
 
@@ -285,7 +286,7 @@ function tick(io, roomId) {
 
   if (mode === 'timed') {
     const now = Date.now()
-    tickPayload.timeLeft = Math.max(0, Math.ceil((game.duration - (now - game.startTime)) / 1000))
+    tickPayload.timeLeft = Math.max(0, Math.ceil((game.duration - (now - game.startTime - (game.totalPausedMs || 0))) / 1000))
     const respawning = {}
     for (const [pid, at] of Object.entries(game.respawnQueue)) {
       respawning[pid] = Math.max(0, Math.ceil((at - now) / 1000))
@@ -417,6 +418,7 @@ function pauseGame(io, roomId) {
   if (!room?.game || room.game.paused) return
   const game = room.game
   game.paused = true
+  game.pausedAt = Date.now()
   clearInterval(game.intervalId)
   game.intervalId = null
   io.to(roomId).emit('game_paused', {
@@ -430,6 +432,8 @@ function resumeGame(io, roomId) {
   if (!room?.game || !room.game.paused) return
   const game = room.game
   game.paused = false
+  game.totalPausedMs = (game.totalPausedMs || 0) + (Date.now() - game.pausedAt)
+  game.pausedAt = null
   game.intervalId = setInterval(() => tick(io, roomId), game.tickMs)
   io.to(roomId).emit('game_resumed')
 }

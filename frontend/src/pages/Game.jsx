@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { socket } from '../socket'
 import { getPlayerId, getPlayerName, savePlayerId, getHostId } from '../storage'
@@ -28,6 +28,7 @@ export default function Game() {
   const roomId = params.get('room')
   const { state } = useGame()
   const lastDirRef = useRef(null)
+  const [followMe, setFollowMe] = useState(true)
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -100,6 +101,23 @@ export default function Game() {
 
   const showBigCountdown = isTimed && state.status === 'playing' && !state.paused &&
     (state.timeLeft ?? 999) <= 10 && (state.timeLeft ?? 0) > 0
+
+  // ── Viewport / mobile camera ──────────────────────────────────────────────
+  const VIEWPORT_SIZE = 20
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
+  const myHead = mySnake?.body?.[0]
+  let viewport = null
+  if (isMobile && followMe && myHead) {
+    const camX = Math.max(0, Math.min((state.gridSize || 20) - VIEWPORT_SIZE, myHead.x - Math.floor(VIEWPORT_SIZE / 2)))
+    const camY = Math.max(0, Math.min((state.gridSize || 20) - VIEWPORT_SIZE, myHead.y - Math.floor(VIEWPORT_SIZE / 2)))
+    viewport = { size: VIEWPORT_SIZE, camX, camY }
+  }
+
+  // ── Top-3 leaderboard data ────────────────────────────────────────────────
+  const MEDALS = ['🥇', '🥈', '🥉']
+  const top3 = state.snakes.length > 0 && state.status === 'playing'
+    ? state.snakes.slice().sort((a, b) => b.body.length - a.body.length).slice(0, 3)
+    : null
 
   return (
     <div className="flex flex-col h-dvh bg-[#0d1117] select-none">
@@ -180,114 +198,123 @@ export default function Game() {
         </div>
       </div>
 
+      {/* ── Top-3 leaderboard strip (mobile only, between top bar and game area) */}
+      {top3 && (
+        <div className="sm:hidden flex items-center shrink-0 bg-[#161b22]/90 border-b border-[#30363d] px-2 h-7 gap-0 overflow-hidden">
+          {top3.map((s, i) => (
+            <div
+              key={s.playerId}
+              className={`flex items-center gap-1 px-2 h-full text-xs font-medium min-w-0 ${s.playerId === state.myPlayerId ? 'bg-white/10 rounded' : ''}`}
+            >
+              <span className="text-sm leading-none shrink-0">{MEDALS[i]}</span>
+              <span
+                className="inline-block w-2 h-2 rounded-full shrink-0"
+                style={{ background: s.color }}
+              />
+              <span className="text-white truncate max-w-[56px]">{s.name}</span>
+              <span className="text-gray-400 font-mono ml-1 shrink-0">{s.body.length}</span>
+            </div>
+          )).reduce((acc, el, i) => {
+            if (i === 0) return [el]
+            return [...acc, <span key={`sep-${i}`} className="text-gray-600 shrink-0 px-0.5">|</span>, el]
+          }, [])}
+        </div>
+      )}
+
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden gap-2 p-2">
         {/* Canvas container */}
         <div className="relative flex-1 flex items-center justify-center min-w-0">
-          <div className="relative w-full h-full flex items-center justify-center">
+          <div className="relative w-full" style={{ aspectRatio: '1 / 1', maxHeight: '100%' }}>
             <GameCanvas
               snakes={state.snakes}
               food={state.food}
               gridSize={state.gridSize || 20}
               myPlayerId={state.myPlayerId}
+              viewport={viewport}
             />
-          </div>
 
-          {/* ── Top-3 leaderboard overlay ──────────────────────── */}
-          {state.snakes.length > 0 && state.status === 'playing' && (() => {
-            const MEDALS = ['🥇', '🥈', '🥉']
-            const top3 = state.snakes
-              .slice()
-              .sort((a, b) => b.body.length - a.body.length)
-              .slice(0, 3)
-            return (
-              <div className="absolute top-2 left-2 z-10 pointer-events-none flex flex-col gap-1">
-                {top3.map((s, i) => (
+            {/* ── Mobile viewport toggle button ─────────────────── */}
+            {isMobile && state.status === 'playing' && (
+              <button
+                onPointerDown={() => setFollowMe(f => !f)}
+                className="absolute bottom-2 right-2 z-10 bg-black/60 text-white text-xs px-2 py-1 rounded-lg border border-white/20"
+              >
+                {followMe ? '全圖' : '跟隨'}
+              </button>
+            )}
+
+            {/* ── Big countdown (last 10 s) ──────────────────────── */}
+            {showBigCountdown && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                <div key={state.timeLeft} className="relative flex items-center justify-center">
+                  {/* ripple ring */}
                   <div
-                    key={s.playerId}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-semibold backdrop-blur-sm
-                      ${s.playerId === state.myPlayerId ? 'bg-white/20 border border-white/30' : 'bg-black/50'}`}
+                    className="countdown-ring absolute rounded-full border-4 border-red-500"
+                    style={{ width: '1em', height: '1em', fontSize: 'clamp(80px, 22vmin, 180px)' }}
+                  />
+                  {/* number */}
+                  <span
+                    className="countdown-num font-black tabular-nums leading-none"
+                    style={{
+                      fontSize: 'clamp(80px, 22vmin, 180px)',
+                      color: state.timeLeft <= 3 ? '#ff2222' : '#ff6600',
+                      textShadow: state.timeLeft <= 3
+                        ? '0 0 40px rgba(255,30,30,0.9), 0 0 80px rgba(255,0,0,0.6), 0 0 2px #fff'
+                        : '0 0 40px rgba(255,120,0,0.9), 0 0 80px rgba(255,80,0,0.5), 0 0 2px #fff',
+                    }}
                   >
-                    <span className="text-sm leading-none">{MEDALS[i]}</span>
-                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: s.color }} />
-                    <span className="text-white truncate max-w-[80px]">{s.name}</span>
-                    <span className="text-gray-300 font-mono ml-auto pl-2">{s.body.length}</span>
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
-
-          {/* ── Big countdown (last 10 s) ──────────────────────── */}
-          {showBigCountdown && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-              <div key={state.timeLeft} className="relative flex items-center justify-center">
-                {/* ripple ring */}
-                <div
-                  className="countdown-ring absolute rounded-full border-4 border-red-500"
-                  style={{ width: '1em', height: '1em', fontSize: 'clamp(80px, 22vmin, 180px)' }}
-                />
-                {/* number */}
-                <span
-                  className="countdown-num font-black tabular-nums leading-none"
-                  style={{
-                    fontSize: 'clamp(80px, 22vmin, 180px)',
-                    color: state.timeLeft <= 3 ? '#ff2222' : '#ff6600',
-                    textShadow: state.timeLeft <= 3
-                      ? '0 0 40px rgba(255,30,30,0.9), 0 0 80px rgba(255,0,0,0.6), 0 0 2px #fff'
-                      : '0 0 40px rgba(255,120,0,0.9), 0 0 80px rgba(255,80,0,0.5), 0 0 2px #fff',
-                  }}
-                >
-                  {state.timeLeft}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* ── Pause overlays ─────────────────────────────────── */}
-          {state.paused && state.isHost && (
-            <PausePanel
-              roomId={roomId}
-              gameGridSize={state.gridSize || 20}
-              gameTickMs={gameTickMs}
-            />
-          )}
-          {state.paused && !state.isHost && (
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
-              <div className="text-center">
-                <div className="text-5xl mb-3">⏸</div>
-                <div className="text-2xl font-bold text-white">遊戲暫停中</div>
-                <div className="text-gray-400 mt-2 text-sm">等待房主繼續…</div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Respawn overlay (timed mode) ───────────────────── */}
-          {!state.paused && isRespawning && (
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-10">
-              <div className="text-center">
-                <div className="text-5xl mb-3">💀</div>
-                <div className="text-xl font-bold text-white">等待復活</div>
-                <div className={`text-6xl font-mono font-bold mt-2 ${respawnCountdown <= 3 ? 'text-green-400' : 'text-orange-400'}`}>
-                  {respawnCountdown}
+                    {state.timeLeft}
+                  </span>
                 </div>
-                <div className="text-gray-400 text-sm mt-1">秒後復活</div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ── Game over ─────────────────────────────────────── */}
-          {state.status === 'finished' && (
-            <GameOver
-              winnerId={state.winnerId}
-              winnerName={state.winnerName}
-              rankings={state.rankings}
-              myPlayerId={state.myPlayerId}
-              isHost={state.isHost}
-              roomId={roomId}
-              mode={state.mode}
-            />
-          )}
+            {/* ── Pause overlays ─────────────────────────────────── */}
+            {state.paused && state.isHost && (
+              <PausePanel
+                roomId={roomId}
+                gameGridSize={state.gridSize || 20}
+                gameTickMs={gameTickMs}
+              />
+            )}
+            {state.paused && !state.isHost && (
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
+                <div className="text-center">
+                  <div className="text-5xl mb-3">⏸</div>
+                  <div className="text-2xl font-bold text-white">遊戲暫停中</div>
+                  <div className="text-gray-400 mt-2 text-sm">等待房主繼續…</div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Respawn overlay (timed mode) ───────────────────── */}
+            {!state.paused && isRespawning && (
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-10">
+                <div className="text-center">
+                  <div className="text-5xl mb-3">💀</div>
+                  <div className="text-xl font-bold text-white">等待復活</div>
+                  <div className={`text-6xl font-mono font-bold mt-2 ${respawnCountdown <= 3 ? 'text-green-400' : 'text-orange-400'}`}>
+                    {respawnCountdown}
+                  </div>
+                  <div className="text-gray-400 text-sm mt-1">秒後復活</div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Game over ─────────────────────────────────────── */}
+            {state.status === 'finished' && (
+              <GameOver
+                winnerId={state.winnerId}
+                winnerName={state.winnerName}
+                rankings={state.rankings}
+                myPlayerId={state.myPlayerId}
+                isHost={state.isHost}
+                roomId={roomId}
+                mode={state.mode}
+              />
+            )}
+          </div>
         </div>
 
         {/* Side scoreboard */}
