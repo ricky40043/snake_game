@@ -18,6 +18,15 @@ function registerGameHandlers(io, socket, socketMap) {
     gameService.startGame(io, roomId)
   })
 
+  // Attack: fire a bullet (attack mode only)
+  socket.on('shoot', ({ roomId } = {}) => {
+    const info = socketMap.get(socket.id)
+    if (!info) return
+    const room = roomService.getRoom(roomId || info.roomId)
+    if (!room?.game || room.status !== 'playing' || room.game.paused) return
+    gameService.processShoot(room.game, info.playerId)
+  })
+
   // Direction input
   socket.on('change_direction', ({ roomId, direction } = {}) => {
     const info = socketMap.get(socket.id)

@@ -17,6 +17,7 @@ const initialState = {
   duration: 180,
   snakes: [],
   food: [],
+  bullets: [],
   tick: 0,
   timeLeft: null,
   respawning: {},
@@ -76,6 +77,7 @@ export function useGameState() {
         duration: duration || 180,
         snakes,
         food,
+        bullets: [],
         tick: 0,
         timeLeft: mode === 'timed' ? duration : null,
         respawning: {},
@@ -102,7 +104,7 @@ export function useGameState() {
       setState((prev) => ({ ...prev, settings: { ...prev.settings, tickMs } }))
     })
 
-    socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning }) => {
+    socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning, bullets }) => {
       setState((prev) => ({
         ...prev,
         tick,
@@ -110,6 +112,7 @@ export function useGameState() {
         food,
         ...(timeLeft !== undefined && { timeLeft }),
         ...(respawning !== undefined && { respawning }),
+        ...(bullets !== undefined && { bullets }),
       }))
     })
 
@@ -145,6 +148,7 @@ export function useGameState() {
         status: 'lobby',
         snakes: [],
         food: [],
+        bullets: [],
         tick: 0,
         winnerId: null,
         winnerName: null,

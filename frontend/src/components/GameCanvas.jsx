@@ -5,7 +5,7 @@ const BG_COLOR = '#11111a'
 
 const DIR_DELTA_CANVAS = { UP: [0, -1], DOWN: [0, 1], LEFT: [-1, 0], RIGHT: [1, 0] }
 
-export default function GameCanvas({ snakes, food, gridSize, myPlayerId, viewport, previewSnake }) {
+export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId, viewport, previewSnake }) {
   const canvasRef = useRef(null)
 
   const draw = useCallback(() => {
@@ -178,6 +178,42 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId, viewpor
       ctx.globalAlpha = 1
     }
 
+    // ── Bullets (attack mode) ──────────────────────────────────────────
+    if (bullets && bullets.length > 0) {
+      for (const bullet of bullets) {
+        if (viewport && (bullet.x < camX || bullet.x >= camX + viewport.size || bullet.y < camY || bullet.y >= camY + viewport.size)) continue
+        const rx = bullet.x - camX
+        const ry = bullet.y - camY
+        const bx = rx * tileSize + tileSize / 2
+        const by = ry * tileSize + tileSize / 2
+        const bHalf = tileSize * 0.44  // elongated length (half)
+        const bRad  = tileSize * 0.16  // oval radius
+
+        // Angle from direction
+        const angle = bullet.dx !== 0
+          ? (bullet.dx > 0 ? 0 : Math.PI)
+          : (bullet.dy > 0 ? Math.PI / 2 : -Math.PI / 2)
+
+        ctx.save()
+        ctx.translate(bx, by)
+        ctx.rotate(angle)
+        // Glow
+        ctx.shadowColor = bullet.color
+        ctx.shadowBlur = 10
+        ctx.fillStyle = bullet.color
+        ctx.beginPath()
+        ctx.ellipse(0, 0, bHalf, bRad, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Bright core
+        ctx.shadowBlur = 0
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.beginPath()
+        ctx.ellipse(0, 0, bHalf * 0.55, bRad * 0.5, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+    }
+
     // ── Ghost snake: respawn preview (only visible to this player) ────
     if (previewSnake) {
       const { body, direction, color } = previewSnake
@@ -234,7 +270,7 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId, viewpor
 
       ctx.globalAlpha = 1
     }
-  }, [snakes, food, gridSize, myPlayerId, viewport, previewSnake])
+  }, [snakes, food, bullets, gridSize, myPlayerId, viewport, previewSnake])
 
   // Resize canvas to fill container
   useEffect(() => {

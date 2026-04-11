@@ -115,6 +115,30 @@ function findRespawnPos(snakes, existingFood, gridSize) {
   return null
 }
 
+// ── Attack mode: fire a bullet (costs 1 tail segment) ────────────────────────
+function processShoot(game, playerId) {
+  if (game.mode !== 'attack') return
+  const snake = game.snakes[playerId]
+  if (!snake || !snake.alive) return
+  if (snake.body.length <= 3) return // minimum length to shoot
+
+  // Cost: lose tail segment
+  snake.body.pop()
+
+  // Bullet starts 1 tile ahead of head in current direction
+  const head = snake.body[0]
+  const d = DIR_DELTA[snake.direction]
+  game.bullets.push({
+    id: `${playerId}_${++game.bulletIdCounter}`,
+    playerId,
+    x: head.x + d.dx,
+    y: head.y + d.dy,
+    dx: d.dx,
+    dy: d.dy,
+    color: snake.color,
+  })
+}
+
 function startGame(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room) return
@@ -154,9 +178,11 @@ function startGame(io, roomId) {
     tick: 0,
     snakes,
     food,
-    deathLog: [],        // Mode 1: [{ playerId, length, score }], order = death order
+    deathLog: [],        // Mode 1/attack: [{ playerId, length, score }]
     respawnQueue: {},    // Mode 2: { playerId: respawnAtMs }
     previewQueue: {},    // Mode 2: { playerId: previewAtMs } — 3s before respawn
+    bullets: [],         // Mode attack: active projectiles
+    bulletIdCounter: 0,
     startTime: Date.now(),
     paused: false,
     intervalId: null,
@@ -248,9 +274,36 @@ function tick(io, roomId) {
     snake.body.unshift({ x: snake.body[0].x + d.dx, y: snake.body[0].y + d.dy })
   }
 
-  // ── Phase 3: Collision detection ──────────────────────────────────
+  // ── Phase 2.5: Move bullets (attack mode) ────────────────────────
   const dead = new Set()
 
+  if (mode === 'attack' && game.bullets.length > 0) {
+    const bulletsToKeep = []
+    for (const bullet of game.bullets) {
+      let bulletDead = false
+      for (let step = 0; step < 3; step++) {
+        bullet.x += bullet.dx
+        bullet.y += bullet.dy
+        // Wall
+        if (bullet.x < 0 || bullet.x >= gridSize || bullet.y < 0 || bullet.y >= gridSize) {
+          bulletDead = true; break
+        }
+        // Snake body hit (can't hit shooter)
+        for (const snake of aliveSnakes) {
+          if (snake.playerId === bullet.playerId || dead.has(snake.playerId)) continue
+          if (snake.body.some((seg) => seg.x === bullet.x && seg.y === bullet.y)) {
+            dead.add(snake.playerId)
+            bulletDead = true; break
+          }
+        }
+        if (bulletDead) break
+      }
+      if (!bulletDead) bulletsToKeep.push(bullet)
+    }
+    game.bullets = bulletsToKeep
+  }
+
+  // ── Phase 3: Collision detection ──────────────────────────────────
   // Wall
   for (const snake of aliveSnakes) {
     const h = snake.body[0]
@@ -297,7 +350,7 @@ function tick(io, roomId) {
     if (!snake) continue
     const lengthAtDeath = snake.body.length
 
-    if (mode === 'classic') {
+    if (mode === 'classic' || mode === 'attack') {
       snake.alive = false
       game.deathLog.push({ playerId: id, length: lengthAtDeath, score: snake.score })
     } else {
@@ -309,7 +362,7 @@ function tick(io, roomId) {
       game.previewQueue[id] = deathNow + RESPAWN_DELAY_MS - 3000
     }
 
-    // Convert body to corpse food (separate from configured food count)
+    // Convert body to corpse food (tracked by ownerId for cleanup on respawn)
     const foodPos = new Set(game.food.map((f) => `${f.x},${f.y}`))
     const alivePos = new Set()
     for (const s of Object.values(game.snakes)) {
@@ -319,7 +372,7 @@ function tick(io, roomId) {
     for (const seg of snake.body) {
       const key = `${seg.x},${seg.y}`
       if (!foodPos.has(key) && !alivePos.has(key)) {
-        game.food.push({ x: seg.x, y: seg.y, type: 'corpse' })
+        game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: id })
         foodPos.add(key)
       }
     }
@@ -369,10 +422,16 @@ function tick(io, roomId) {
     tickPayload.respawning = respawning
   }
 
+  if (mode === 'attack') {
+    tickPayload.bullets = game.bullets.map((b) => ({
+      id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId,
+    }))
+  }
+
   io.to(roomId).emit('game_tick', tickPayload)
 
-  // ── Phase 8: Win condition (classic only) ─────────────────────────
-  if (mode === 'classic') {
+  // ── Phase 8: Win condition (classic + attack) ─────────────────────
+  if (mode === 'classic' || mode === 'attack') {
     const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
     const total = Object.keys(game.snakes).length
     if (stillAlive.length === 0 || (stillAlive.length === 1 && total > 1)) {
@@ -384,6 +443,8 @@ function tick(io, roomId) {
 function respawnPlayer(game, playerId) {
   const snake = game.snakes[playerId]
   if (!snake) return
+  // Remove this player's corpse food on respawn
+  game.food = game.food.filter((f) => !(f.type === 'corpse' && f.ownerId === playerId))
   // Use pre-calculated position from preview; fall back to fresh calculation
   const pos = snake.pendingRespawn || findRespawnPos(game.snakes, game.food, game.gridSize)
   snake.pendingRespawn = null
@@ -413,7 +474,7 @@ function killSnakeByDisconnect(roomId, playerId) {
   if (!snake || !snake.alive) return
 
   snake.alive = false
-  if (game.mode === 'classic') {
+  if (game.mode === 'classic' || game.mode === 'attack') {
     game.deathLog.push({ playerId, length: snake.body.length, score: snake.score })
   } else {
     snake.lengthAtDeath = snake.body.length
@@ -430,7 +491,7 @@ function killSnakeByDisconnect(roomId, playerId) {
   for (const seg of snake.body) {
     const key = `${seg.x},${seg.y}`
     if (!foodPos.has(key) && !alivePos.has(key)) {
-      game.food.push({ x: seg.x, y: seg.y, type: 'corpse' })
+      game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: playerId })
       foodPos.add(key)
     }
   }
@@ -448,7 +509,7 @@ function endGame(io, roomId) {
   let winnerId = null
   let rankings = []
 
-  if (game.mode === 'classic') {
+  if (game.mode === 'classic' || game.mode === 'attack') {
     // Winner = last alive
     const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
     if (stillAlive.length === 1) {
@@ -593,6 +654,7 @@ function endGameNow(io, roomId) {
 
 module.exports = {
   startGame,
+  processShoot,
   handleDirectionChange,
   killSnakeByDisconnect,
   pauseGame,

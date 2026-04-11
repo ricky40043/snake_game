@@ -36,9 +36,9 @@ function registerSocketHandlers(io) {
           settings: room.settings,
           hostId: room.hostId,
         })
-        // Check if game should end now
+        // Check if game should end now (not applicable to timed mode — players can respawn)
         const game = room.game
-        if (game) {
+        if (game && game.mode !== 'timed') {
           const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
           const totalPlayers = Object.keys(game.snakes).length
           if (stillAlive.length === 0 || (stillAlive.length === 1 && totalPlayers > 1)) {
