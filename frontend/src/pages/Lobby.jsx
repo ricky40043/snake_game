@@ -126,6 +126,37 @@ export default function Lobby() {
           <div className="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">遊戲設定</h3>
 
+            {/* My color */}
+            {(() => {
+              const COLORS = ['#4ade80','#60a5fa','#f97316','#e879f9','#facc15','#f87171','#34d399']
+              const myColor = state.players.find((p) => p.playerId === state.myPlayerId)?.color
+              return (
+                <div className="mb-5">
+                  <div className="text-sm text-gray-300 mb-2">蛇的顏色</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {COLORS.map((c) => {
+                      const isMe = c === myColor
+                      return (
+                        <div key={c} className="relative flex flex-col items-center gap-1">
+                          <div
+                            className="rounded-full transition-all"
+                            style={{
+                              width: isMe ? 32 : 20,
+                              height: isMe ? 32 : 20,
+                              background: c,
+                              boxShadow: isMe ? `0 0 0 3px #fff, 0 0 12px 4px ${c}` : undefined,
+                              opacity: myColor && !isMe ? 0.35 : 1,
+                            }}
+                          />
+                          {isMe && <span className="text-[10px] font-bold text-white leading-none">你</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Mode selector */}
             <div className="mb-5">
               <div className="text-sm text-gray-300 mb-2">遊戲模式</div>

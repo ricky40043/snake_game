@@ -140,7 +140,15 @@ export default function Game() {
             </span>
           )}
           <span className="text-gray-500">存活 {alivePlayers.length}</span>
-          {mySnake && <span className="text-yellow-400 font-mono">{mySnake.score}分</span>}
+          {mySnake && (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-3 h-3 rounded-full shrink-0"
+                style={{ background: mySnake.color, boxShadow: `0 0 6px 1px ${mySnake.color}` }}
+              />
+              <span className="text-yellow-400 font-mono">{mySnake.score}分</span>
+            </span>
+          )}
         </div>
       </div>
 
