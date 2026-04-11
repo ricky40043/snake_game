@@ -216,6 +216,9 @@ function registerRoomHandlers(io, socket, socketMap) {
     }
     roomService.removePlayer(roomId, playerId)
 
+    // Tell the leaving socket to reset its state
+    socket.emit('room_left')
+
     const updatedRoom = roomService.getRoom(roomId)
     if (updatedRoom) {
       io.to(roomId).emit('room_updated', { roomId,

@@ -10,9 +10,12 @@ export default function Home() {
   const [params] = useSearchParams()
   const { state, clearError } = useGame()
   const [name, setName] = useState(getPlayerName())
-  const [roomCode, setRoomCode] = useState(params.get('join') || '')
+  const [roomCode, setRoomCode] = useState('')
   const [loading, setLoading] = useState(null) // 'create' | 'join' | null
   const [showScanner, setShowScanner] = useState(false)
+
+  // If ?join=XXXX is in URL, show the dedicated join page
+  const joinCode = (params.get('join') || '').toUpperCase()
 
   useEffect(() => {
     if (!socket.connected) socket.connect()
@@ -47,15 +50,15 @@ export default function Home() {
     socket.emit('create_room', { hostId })
   }
 
-  function handleJoin() {
-    const code = roomCode.trim().toUpperCase()
+  function handleJoin(code) {
+    const c = (code || roomCode).trim().toUpperCase()
     if (!validateName()) return
-    if (code.length !== 6) { alert('請輸入 6 位房間代碼'); return }
+    if (c.length !== 6) { alert('請輸入 6 位房間代碼'); return }
     setLoading('join')
     clearError()
-    const existingId = getPlayerId(code)
-    socket.emit('join_room', { roomId: code, playerId: existingId, name: name.trim() })
-    socket.once('room_joined', ({ playerId }) => savePlayerId(code, playerId))
+    const existingId = getPlayerId(c)
+    socket.emit('join_room', { roomId: c, playerId: existingId, name: name.trim() })
+    socket.once('room_joined', ({ playerId }) => savePlayerId(c, playerId))
   }
 
   function handleScan(url) {
@@ -63,13 +66,68 @@ export default function Home() {
     try {
       const parsed = new URL(url)
       const code = parsed.searchParams.get('join') || parsed.pathname.split('/').pop()
-      if (code) setRoomCode(code.toUpperCase())
+      if (code) navigate(`/?join=${code.toUpperCase()}`)
     } catch {
-      // raw room code
-      if (url.length === 6) setRoomCode(url.toUpperCase())
+      if (url.length === 6) navigate(`/?join=${url.toUpperCase()}`)
     }
   }
 
+  // ── Dedicated join page (QR scan or direct link) ─────────────────────────
+  if (joinCode) {
+    return (
+      <div className="min-h-dvh flex flex-col bg-[#0d1117]">
+        <button
+          onClick={() => navigate('/')}
+          className="text-gray-500 hover:text-gray-300 text-sm flex items-center gap-1 transition px-5 pt-5"
+        >
+          ← 返回主頁
+        </button>
+
+        <div className="flex flex-col items-center justify-center flex-1 px-6 gap-6 pb-10">
+          <div className="text-center">
+            <div className="text-7xl mb-4">🐍</div>
+            <h1 className="text-4xl font-bold text-green-400 mb-3">貪吃蛇 Online</h1>
+            <div className="inline-flex items-center gap-2 bg-green-900/30 border border-green-700/50 rounded-2xl px-5 py-2">
+              <span className="text-gray-400 text-sm">加入房間</span>
+              <span className="text-green-300 font-mono font-bold text-2xl tracking-[0.2em]">{joinCode}</span>
+            </div>
+          </div>
+
+          <div className="w-full max-w-sm flex flex-col gap-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-2 uppercase tracking-widest">你的暱稱</label>
+              <input
+                type="text"
+                maxLength={12}
+                value={name}
+                autoFocus
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleJoin(joinCode)}
+                placeholder="輸入暱稱"
+                className="w-full bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-4 text-white placeholder-gray-600 focus:outline-none focus:border-green-500 transition text-center text-xl font-semibold"
+              />
+            </div>
+
+            <button
+              onClick={() => handleJoin(joinCode)}
+              disabled={loading !== null}
+              className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-bold py-4 rounded-2xl transition text-lg"
+            >
+              {loading === 'join' ? '加入中…' : '加入遊戲'}
+            </button>
+          </div>
+
+          {state.error && (
+            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-xl px-4 py-2 max-w-sm w-full text-center">
+              {state.error.message}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Normal home page ──────────────────────────────────────────────────────
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-10 gap-6">
       {/* Title */}
@@ -127,7 +185,7 @@ export default function Home() {
             />
           </div>
           <button
-            onClick={handleJoin}
+            onClick={() => handleJoin()}
             disabled={loading !== null}
             className="bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl transition shrink-0"
           >

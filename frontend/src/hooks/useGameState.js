@@ -136,6 +136,10 @@ export function useGameState() {
       setState((prev) => ({ ...prev, settings }))
     })
 
+    socket.on('room_left', () => {
+      setState(initialState)
+    })
+
     socket.on('error', ({ code, message }) => {
       set({ error: { code, message } })
     })
@@ -151,6 +155,7 @@ export function useGameState() {
       socket.off('game_tick')
       socket.off('game_over')
       socket.off('game_reset')
+      socket.off('room_left')
       socket.off('settings_updated')
       socket.off('game_paused')
       socket.off('game_resumed')
