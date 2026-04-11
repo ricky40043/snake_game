@@ -68,12 +68,10 @@ export default function Game() {
       return
     }
 
-    // F key: shoot (attack mode)
+    // F key: shoot
     if (e.key === 'f' || e.key === 'F') {
       e.preventDefault()
-      if (state.mode === 'attack' && state.status === 'playing' && !state.paused) {
-        socket.emit('shoot', { roomId })
-      }
+      if (state.status === 'playing' && !state.paused) socket.emit('shoot', { roomId })
       return
     }
 
@@ -98,15 +96,12 @@ export default function Game() {
   }
 
   function sendShoot() {
-    if (state.mode === 'attack' && state.status === 'playing' && !state.paused) {
-      socket.emit('shoot', { roomId })
-    }
+    if (state.status === 'playing' && !state.paused) socket.emit('shoot', { roomId })
   }
 
   const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
   const isAlive = mySnake?.alive ?? true
   const isTimed = state.mode === 'timed'
-  const isAttack = state.mode === 'attack'
   const isRespawning = isTimed && !isAlive && state.respawning?.[state.myPlayerId] !== undefined
   const respawnCountdown = isRespawning ? (state.respawning[state.myPlayerId] ?? 0) : 0
   const alivePlayers = state.snakes.filter((s) => s.alive)
@@ -163,11 +158,11 @@ export default function Game() {
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-green-400 font-bold text-sm">🐍</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isTimed ? 'bg-orange-900/40 text-orange-400' : isAttack ? 'bg-red-900/40 text-red-400' : 'bg-green-900/40 text-green-400'}`}>
-            {isTimed ? '⏱ 計時' : isAttack ? '⚡ 攻擊' : '🏆 存活'}
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isTimed ? 'bg-orange-900/40 text-orange-400' : 'bg-green-900/40 text-green-400'}`}>
+            {isTimed ? '⏱ 計時' : '🏆 存活'}
           </span>
-          {isAttack && state.status === 'playing' && !state.paused && (
-            <span className="text-xs text-gray-600 hidden sm:inline">F 鍵攻擊（需 4 節以上）</span>
+          {state.status === 'playing' && !state.paused && (
+            <span className="text-xs text-gray-600 hidden sm:inline">F 鍵攻擊</span>
           )}
           {state.isHost && state.status === 'playing' && (
             <span className="text-xs text-gray-600 hidden sm:inline">
@@ -382,25 +377,25 @@ export default function Game() {
         </div>
       </div>
 
-      {/* Mobile controls */}
-      <div className="sm:hidden flex flex-col items-center gap-2 pb-4 pt-2 shrink-0">
-        <button onPointerDown={() => sendDir('UP')}
-          className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↑</button>
-        <div className="flex gap-2 items-center">
-          <button onPointerDown={() => sendDir('LEFT')}
-            className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">←</button>
-          <button onPointerDown={() => sendDir('DOWN')}
-            className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↓</button>
-          <button onPointerDown={() => sendDir('RIGHT')}
-            className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">→</button>
-          {isAttack && (
+      {/* Mobile controls — hidden when game is finished so GameOver overlay isn't obscured */}
+      {state.status !== 'finished' && (
+        <div className="sm:hidden flex flex-col items-center gap-2 pb-4 pt-2 shrink-0">
+          <button onPointerDown={() => sendDir('UP')}
+            className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↑</button>
+          <div className="flex gap-2 items-center">
+            <button onPointerDown={() => sendDir('LEFT')}
+              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">←</button>
+            <button onPointerDown={() => sendDir('DOWN')}
+              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↓</button>
+            <button onPointerDown={() => sendDir('RIGHT')}
+              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">→</button>
             <button onPointerDown={sendShoot}
               className="w-14 h-14 bg-red-700 active:bg-red-600 rounded-xl text-2xl flex items-center justify-center ml-1 border-2 border-red-500">
               ⚡
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -115,9 +115,8 @@ function findRespawnPos(snakes, existingFood, gridSize) {
   return null
 }
 
-// ── Attack mode: fire a bullet (costs 1 tail segment) ────────────────────────
+// ── Shoot a bullet (available in all modes, costs 1 tail segment) ────────────
 function processShoot(game, playerId) {
-  if (game.mode !== 'attack') return
   const snake = game.snakes[playerId]
   if (!snake || !snake.alive) return
   if (snake.body.length <= 3) return // minimum length to shoot
@@ -274,10 +273,10 @@ function tick(io, roomId) {
     snake.body.unshift({ x: snake.body[0].x + d.dx, y: snake.body[0].y + d.dy })
   }
 
-  // ── Phase 2.5: Move bullets (attack mode) ────────────────────────
+  // ── Phase 2.5: Move bullets ───────────────────────────────────────
   const dead = new Set()
 
-  if (mode === 'attack' && game.bullets.length > 0) {
+  if (game.bullets.length > 0) {
     const bulletsToKeep = []
     for (const bullet of game.bullets) {
       let bulletDead = false
@@ -350,7 +349,7 @@ function tick(io, roomId) {
     if (!snake) continue
     const lengthAtDeath = snake.body.length
 
-    if (mode === 'classic' || mode === 'attack') {
+    if (mode === 'classic') {
       snake.alive = false
       game.deathLog.push({ playerId: id, length: lengthAtDeath, score: snake.score })
     } else {
@@ -422,16 +421,14 @@ function tick(io, roomId) {
     tickPayload.respawning = respawning
   }
 
-  if (mode === 'attack') {
-    tickPayload.bullets = game.bullets.map((b) => ({
-      id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId,
-    }))
-  }
+  tickPayload.bullets = game.bullets.map((b) => ({
+    id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId,
+  }))
 
   io.to(roomId).emit('game_tick', tickPayload)
 
-  // ── Phase 8: Win condition (classic + attack) ─────────────────────
-  if (mode === 'classic' || mode === 'attack') {
+  // ── Phase 8: Win condition (classic only — timed has timer) ──────
+  if (mode === 'classic') {
     const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
     const total = Object.keys(game.snakes).length
     if (stillAlive.length === 0 || (stillAlive.length === 1 && total > 1)) {
@@ -474,7 +471,7 @@ function killSnakeByDisconnect(roomId, playerId) {
   if (!snake || !snake.alive) return
 
   snake.alive = false
-  if (game.mode === 'classic' || game.mode === 'attack') {
+  if (game.mode === 'classic') {
     game.deathLog.push({ playerId, length: snake.body.length, score: snake.score })
   } else {
     snake.lengthAtDeath = snake.body.length
@@ -509,7 +506,7 @@ function endGame(io, roomId) {
   let winnerId = null
   let rankings = []
 
-  if (game.mode === 'classic' || game.mode === 'attack') {
+  if (game.mode === 'classic') {
     // Winner = last alive
     const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
     if (stillAlive.length === 1) {

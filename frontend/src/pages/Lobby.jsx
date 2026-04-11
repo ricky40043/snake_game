@@ -180,7 +180,7 @@ export default function Lobby() {
             {/* Mode selector */}
             <div className="mb-5">
               <div className="text-sm text-gray-300 mb-2">遊戲模式</div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   disabled={!state.isHost}
                   onClick={() => setMode('classic')}
@@ -188,7 +188,7 @@ export default function Lobby() {
                     ${currentMode === 'classic' ? 'bg-green-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
                 >
                   <span className="text-xl">🏆</span>
-                  <span>存活</span>
+                  <span>存活模式</span>
                   <span className={`text-xs font-normal ${currentMode === 'classic' ? 'text-black/60' : 'text-gray-600'}`}>最後存活獲勝</span>
                 </button>
                 <button
@@ -198,20 +198,11 @@ export default function Lobby() {
                     ${currentMode === 'timed' ? 'bg-orange-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
                 >
                   <span className="text-xl">⏱</span>
-                  <span>計時</span>
+                  <span>計時模式</span>
                   <span className={`text-xs font-normal ${currentMode === 'timed' ? 'text-black/60' : 'text-gray-600'}`}>最長蛇獲勝</span>
                 </button>
-                <button
-                  disabled={!state.isHost}
-                  onClick={() => setMode('attack')}
-                  className={`py-3 rounded-xl text-sm font-semibold transition disabled:cursor-default flex flex-col items-center gap-1
-                    ${currentMode === 'attack' ? 'bg-red-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
-                >
-                  <span className="text-xl">⚡</span>
-                  <span>攻擊</span>
-                  <span className={`text-xs font-normal ${currentMode === 'attack' ? 'text-black/60' : 'text-gray-600'}`}>射擊對決</span>
-                </button>
               </div>
+              <p className="text-xs text-gray-600 mt-2 text-center">⚡ 所有模式均可按 F 鍵（手機：⚡鈕）發射子彈攻擊</p>
             </div>
 
             {/* Duration slider (timed only) */}

@@ -186,8 +186,8 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
         const ry = bullet.y - camY
         const bx = rx * tileSize + tileSize / 2
         const by = ry * tileSize + tileSize / 2
-        const bHalf = tileSize * 0.44  // elongated length (half)
-        const bRad  = tileSize * 0.16  // oval radius
+        const bHalf = tileSize * 0.62  // elongated length (half)
+        const bRad  = tileSize * 0.24  // oval radius
 
         // Angle from direction
         const angle = bullet.dx !== 0
@@ -199,7 +199,7 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
         ctx.rotate(angle)
         // Glow
         ctx.shadowColor = bullet.color
-        ctx.shadowBlur = 10
+        ctx.shadowBlur = 16
         ctx.fillStyle = bullet.color
         ctx.beginPath()
         ctx.ellipse(0, 0, bHalf, bRad, 0, 0, Math.PI * 2)

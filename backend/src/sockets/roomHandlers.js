@@ -194,7 +194,7 @@ function registerRoomHandlers(io, socket, socketMap) {
     const fc = Math.round(Number(settings.foodCount))
     if (g >= 10 && g <= 60) room.settings.gridSize = g
     if (t >= 60 && t <= 500) room.settings.tickMs = t
-    if (['classic', 'timed', 'attack'].includes(settings.mode)) room.settings.mode = settings.mode
+    if (['classic', 'timed'].includes(settings.mode)) room.settings.mode = settings.mode
     if (d >= 30 && d <= 600) room.settings.duration = d
     if (fc >= 1 && fc <= 10) room.settings.foodCount = fc
 

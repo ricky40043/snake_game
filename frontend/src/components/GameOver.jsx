@@ -46,6 +46,9 @@ export default function GameOver({ winnerId, winnerName, rankings, myPlayerId, i
             ${isTimed ? 'bg-orange-900/40 text-orange-400' : 'bg-green-900/40 text-green-400'}`}>
             {isTimed ? '⏱ 計時模式' : '🏆 存活模式'}
           </div>
+          <div className="inline-block mt-1 ml-1 text-xs px-3 py-1 rounded-full font-semibold bg-red-900/30 text-red-400">
+            ⚡ 射擊模式
+          </div>
         </div>
 
         {/* Rankings */}
