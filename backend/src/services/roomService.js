@@ -67,12 +67,13 @@ function addPlayer(roomId, socketId, name, existingPlayerId = null) {
   if (room.players.size >= config.maxPlayersPerRoom) return { error: 'ROOM_FULL' }
 
   const playerId = existingPlayerId || uuidv4()
-  const colorIndex = room.players.size % PLAYER_COLORS.length
+  const usedColors = new Set([...room.players.values()].map((p) => p.color))
+  const color = PLAYER_COLORS.find((c) => !usedColors.has(c)) ?? PLAYER_COLORS[room.players.size % PLAYER_COLORS.length]
   const player = {
     playerId,
     name: name.trim().slice(0, 12) || 'Player',
     socketId,
-    color: PLAYER_COLORS[colorIndex],
+    color,
     isAlive: true,
     isOnline: true,
     score: 0,
