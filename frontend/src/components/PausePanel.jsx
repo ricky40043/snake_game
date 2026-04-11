@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { socket } from '../socket'
 
-function speedToTickMs(s) { return Math.round(250 - (s - 1) * (190 / 9)) }
-function tickMsToSpeed(t) { return Math.max(1, Math.min(10, Math.round(((250 - t) / 190) * 9) + 1)) }
+function speedToTickMs(s) { return Math.round(500 - (s - 1) * (440 / 9)) }
+function tickMsToSpeed(t) { return Math.max(1, Math.min(10, Math.round(((500 - t) / 440) * 9) + 1)) }
 function speedLabel(s) { return s <= 2 ? '很慢' : s <= 4 ? '慢' : s <= 6 ? '中' : s <= 8 ? '快' : '很快' }
 
 export default function PausePanel({ roomId, gameGridSize, gameTickMs }) {

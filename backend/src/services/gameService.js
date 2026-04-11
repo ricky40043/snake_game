@@ -473,7 +473,7 @@ function updatePauseSpeed(io, roomId, newTickMs) {
   const room = roomService.getRoom(roomId)
   if (!room?.game) return
   const t = Math.round(newTickMs)
-  if (t < 60 || t > 250) return
+  if (t < 60 || t > 500) return
   room.game.tickMs = t
   room.settings.tickMs = t
   io.to(roomId).emit('pause_speed_updated', { tickMs: t })

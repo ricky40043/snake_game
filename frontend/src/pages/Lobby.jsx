@@ -6,10 +6,10 @@ import { getHostId, getPlayerId, savePlayerId, getPlayerName } from '../storage'
 import { useGame } from '../App'
 
 function speedToTickMs(speed) {
-  return Math.round(250 - (speed - 1) * (190 / 9))
+  return Math.round(500 - (speed - 1) * (440 / 9))
 }
 function tickMsToSpeed(tickMs) {
-  return Math.max(1, Math.min(10, Math.round(((250 - tickMs) / 190) * 9) + 1))
+  return Math.max(1, Math.min(10, Math.round(((500 - tickMs) / 440) * 9) + 1))
 }
 function speedLabel(s) {
   return s <= 2 ? '很慢' : s <= 4 ? '慢' : s <= 6 ? '中' : s <= 8 ? '快' : '很快'
@@ -185,7 +185,7 @@ export default function Lobby() {
                 <span className="text-sm font-mono font-bold text-green-400">{localGrid} × {localGrid}</span>
               </div>
               <input
-                type="range" min={10} max={40} step={1}
+                type="range" min={10} max={60} step={1}
                 value={localGrid}
                 disabled={!state.isHost}
                 onChange={(e) => setLocalGrid(Number(e.target.value))}

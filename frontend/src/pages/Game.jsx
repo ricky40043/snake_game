@@ -98,8 +98,28 @@ export default function Game() {
   // Current game settings for PausePanel
   const gameTickMs = state.settings?.tickMs || 130
 
+  const showBigCountdown = isTimed && state.status === 'playing' && !state.paused &&
+    (state.timeLeft ?? 999) <= 10 && (state.timeLeft ?? 0) > 0
+
   return (
     <div className="flex flex-col h-dvh bg-[#0d1117] select-none">
+      <style>{`
+        @keyframes countdown-pop {
+          0%   { transform: scale(2.2); opacity: 1; filter: brightness(2) blur(0px); }
+          40%  { transform: scale(1);   opacity: 0.95; filter: brightness(1.2) blur(0px); }
+          100% { transform: scale(0.7); opacity: 0; filter: brightness(1) blur(2px); }
+        }
+        @keyframes countdown-ring {
+          0%   { transform: scale(2.5); opacity: 0.6; }
+          100% { transform: scale(4);   opacity: 0; }
+        }
+        .countdown-num {
+          animation: countdown-pop 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+        .countdown-ring {
+          animation: countdown-ring 0.85s ease-out forwards;
+        }
+      `}</style>
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
         <div className="flex items-center gap-2">
@@ -136,6 +156,32 @@ export default function Game() {
               myPlayerId={state.myPlayerId}
             />
           </div>
+
+          {/* ── Big countdown (last 10 s) ──────────────────────── */}
+          {showBigCountdown && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <div key={state.timeLeft} className="relative flex items-center justify-center">
+                {/* ripple ring */}
+                <div
+                  className="countdown-ring absolute rounded-full border-4 border-red-500"
+                  style={{ width: '1em', height: '1em', fontSize: 'clamp(80px, 22vmin, 180px)' }}
+                />
+                {/* number */}
+                <span
+                  className="countdown-num font-black tabular-nums leading-none"
+                  style={{
+                    fontSize: 'clamp(80px, 22vmin, 180px)',
+                    color: state.timeLeft <= 3 ? '#ff2222' : '#ff6600',
+                    textShadow: state.timeLeft <= 3
+                      ? '0 0 40px rgba(255,30,30,0.9), 0 0 80px rgba(255,0,0,0.6), 0 0 2px #fff'
+                      : '0 0 40px rgba(255,120,0,0.9), 0 0 80px rgba(255,80,0,0.5), 0 0 2px #fff',
+                  }}
+                >
+                  {state.timeLeft}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* ── Pause overlays ─────────────────────────────────── */}
           {state.paused && state.isHost && (
