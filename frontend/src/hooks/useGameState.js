@@ -168,5 +168,7 @@ export function useGameState() {
 
   const clearError = useCallback(() => set({ error: null }), [set])
 
-  return { state, clearError }
+  const resetState = useCallback(() => setState(initialState), [])
+
+  return { state, clearError, resetState }
 }

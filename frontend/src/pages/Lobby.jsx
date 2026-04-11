@@ -5,6 +5,20 @@ import { socket } from '../socket'
 import { getHostId, getPlayerId, savePlayerId, getPlayerName } from '../storage'
 import { useGame } from '../App'
 
+const ERROR_ZH = {
+  ROOM_NOT_FOUND: '找不到該房間',
+  GAME_ALREADY_STARTED: '遊戲已開始，無法加入',
+  GAME_FINISHED: '遊戲已結束',
+  ROOM_FULL: '房間已滿',
+  NOT_HOST: '只有房主可以執行此操作',
+  NOT_ENOUGH_PLAYERS: '人數不足，無法開始',
+  NOT_IN_ROOM: '尚未加入任何房間',
+  MISSING_FIELD: '缺少必要欄位',
+  INVALID_STATUS: '目前無法執行此操作',
+  CREATE_FAILED: '建立房間失敗，請重試',
+  CONNECT_ERROR: '無法連線到伺服器，請檢查網路',
+}
+
 function speedToTickMs(speed) {
   return Math.round(500 - (speed - 1) * (440 / 9))
 }
@@ -25,7 +39,7 @@ export default function Lobby() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const roomId = params.get('room')
-  const { state, clearError } = useGame()
+  const { state, clearError, resetState } = useGame()
   const [copied, setCopied] = useState('')
 
   const [localGrid, setLocalGrid] = useState(20)
@@ -89,7 +103,7 @@ export default function Lobby() {
     <div className="min-h-dvh flex flex-col">
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363d]">
-        <button onClick={() => { socket.emit('leave_room', { roomId }); navigate('/') }}
+        <button onClick={() => { resetState(); socket.emit('leave_room', { roomId }); navigate('/') }}
           className="text-gray-500 hover:text-gray-300 text-sm flex items-center gap-1 transition">
           ← 返回主頁
         </button>
@@ -289,7 +303,7 @@ export default function Lobby() {
       </div>
 
       {state.error && (
-        <p className="text-center text-red-400 text-sm pb-4">{state.error.message}</p>
+        <p className="text-center text-red-400 text-sm pb-4">{ERROR_ZH[state.error.code] || state.error.message}</p>
       )}
     </div>
   )

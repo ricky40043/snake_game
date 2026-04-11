@@ -5,6 +5,20 @@ import { getHostId, getPlayerId, savePlayerId, getPlayerName, savePlayerName } f
 import { useGame } from '../App'
 import QRScanner from '../components/QRScanner'
 
+const ERROR_ZH = {
+  ROOM_NOT_FOUND: '找不到該房間',
+  GAME_ALREADY_STARTED: '遊戲已開始，無法加入',
+  GAME_FINISHED: '遊戲已結束',
+  ROOM_FULL: '房間已滿',
+  NOT_HOST: '只有房主可以執行此操作',
+  NOT_ENOUGH_PLAYERS: '人數不足，無法開始',
+  NOT_IN_ROOM: '尚未加入任何房間',
+  MISSING_FIELD: '缺少必要欄位',
+  INVALID_STATUS: '目前無法執行此操作',
+  CREATE_FAILED: '建立房間失敗，請重試',
+  CONNECT_ERROR: '無法連線到伺服器，請檢查網路',
+}
+
 export default function Home() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -119,7 +133,7 @@ export default function Home() {
 
           {state.error && (
             <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-xl px-4 py-2 max-w-sm w-full text-center">
-              {state.error.message}
+              {ERROR_ZH[state.error.code] || state.error.message}
             </p>
           )}
         </div>
@@ -212,7 +226,7 @@ export default function Home() {
 
       {state.error && (
         <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-xl px-4 py-2 max-w-md w-full text-center">
-          {state.error.message}
+          {ERROR_ZH[state.error.code] || state.error.message}
         </p>
       )}
 
