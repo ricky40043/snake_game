@@ -105,7 +105,11 @@ export default function Game() {
   // ── Viewport / mobile camera ──────────────────────────────────────────────
   const VIEWPORT_SIZE = 20
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
-  const myHead = mySnake?.body?.[0]
+  // When preview is active (dead, waiting to respawn), center camera on the
+  // preview spawn position so the player can see where they'll appear
+  const myHead = state.respawnPreview
+    ? state.respawnPreview.body[0]
+    : mySnake?.body?.[0]
   let viewport = null
   if (isMobile && followMe && myHead) {
     const camX = Math.max(0, Math.min((state.gridSize || 20) - VIEWPORT_SIZE, myHead.x - Math.floor(VIEWPORT_SIZE / 2)))
@@ -115,8 +119,9 @@ export default function Game() {
 
   // ── Top-3 leaderboard data ────────────────────────────────────────────────
   const MEDALS = ['🥇', '🥈', '🥉']
+  const displayLen = (s) => s.alive ? s.body.length : (s.lengthAtDeath || 0)
   const top3 = state.snakes.length > 0 && state.status === 'playing'
-    ? state.snakes.slice().sort((a, b) => b.body.length - a.body.length).slice(0, 3)
+    ? state.snakes.slice().sort((a, b) => displayLen(b) - displayLen(a)).slice(0, 3)
     : null
 
   return (
@@ -212,7 +217,7 @@ export default function Game() {
                 style={{ background: s.color }}
               />
               <span className="text-white truncate max-w-[56px]">{s.name}</span>
-              <span className="text-gray-400 font-mono ml-1 shrink-0">{s.body.length}</span>
+              <span className="text-gray-400 font-mono ml-1 shrink-0">{displayLen(s)}</span>
             </div>
           )).reduce((acc, el, i) => {
             if (i === 0) return [el]
@@ -347,7 +352,7 @@ export default function Game() {
                     <span className="flex-1 truncate">{s.name}{s.playerId === state.myPlayerId ? ' ★' : ''}</span>
                     <span className={`font-mono ${isTimed ? 'text-green-400' : 'text-yellow-500'}`}>
                       {isTimed
-                        ? (respawnSec !== undefined ? `⟳${respawnSec}s` : s.body.length)
+                        ? (respawnSec !== undefined ? `⟳${respawnSec}s` : displayLen(s))
                         : s.score}
                     </span>
                   </div>

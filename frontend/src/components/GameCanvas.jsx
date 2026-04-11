@@ -50,14 +50,25 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId, viewpor
       const cx = rx * tileSize + tileSize / 2
       const cy = ry * tileSize + tileSize / 2
       const r = tileSize * 0.38
-      ctx.save()
-      ctx.shadowColor = '#f87171'
-      ctx.shadowBlur = 8
-      ctx.fillStyle = '#f87171'
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
+      if (f.type === 'corpse') {
+        // Corpse food: muted tan/gold, smaller, no glow
+        ctx.globalAlpha = 0.6
+        ctx.fillStyle = '#c8a06e'
+        ctx.beginPath()
+        ctx.arc(cx, cy, r * 0.72, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+      } else {
+        // Regular food: bright red with glow
+        ctx.save()
+        ctx.shadowColor = '#f87171'
+        ctx.shadowBlur = 8
+        ctx.fillStyle = '#f87171'
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
     }
 
     // Dead snakes first (dimmed), then alive on top

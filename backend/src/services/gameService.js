@@ -142,7 +142,7 @@ function startGame(io, roomId) {
   const food = []
   for (let i = 0; i < gameFoodCount; i++) {
     const f = placeFoodSafe(snakes, food, gridSize)
-    if (f) food.push(f)
+    if (f) food.push({ x: f.x, y: f.y, type: 'regular' })
   }
 
   room.game = {
@@ -303,10 +303,27 @@ function tick(io, roomId) {
     } else {
       // Timed: queue respawn + preview 3s before
       snake.alive = false
+      snake.lengthAtDeath = lengthAtDeath
       const deathNow = Date.now()
       game.respawnQueue[id] = deathNow + RESPAWN_DELAY_MS
       game.previewQueue[id] = deathNow + RESPAWN_DELAY_MS - 3000
     }
+
+    // Convert body to corpse food (separate from configured food count)
+    const foodPos = new Set(game.food.map((f) => `${f.x},${f.y}`))
+    const alivePos = new Set()
+    for (const s of Object.values(game.snakes)) {
+      if (s.playerId === id || !s.alive) continue
+      for (const seg of s.body) alivePos.add(`${seg.x},${seg.y}`)
+    }
+    for (const seg of snake.body) {
+      const key = `${seg.x},${seg.y}`
+      if (!foodPos.has(key) && !alivePos.has(key)) {
+        game.food.push({ x: seg.x, y: seg.y, type: 'corpse' })
+        foodPos.add(key)
+      }
+    }
+    snake.body = [] // body is now food; cleared so dead snake doesn't render as ghost
 
     const player = room.players.get(id)
     if (player) player.score = snake.score
@@ -315,11 +332,16 @@ function tick(io, roomId) {
   }
 
   // ── Phase 6: Respawn food ─────────────────────────────────────────
+  // Remove any eaten food (regular or corpse)
   game.food = game.food.filter((_, i) => !eatenIdx.has(i))
-  while (game.food.length < game.foodCount) {
+  // Only replenish regular food up to configured count; corpse food is independent
+  const regularCount = game.food.filter((f) => !f.type || f.type === 'regular').length
+  let needed = game.foodCount - regularCount
+  while (needed > 0) {
     const f = placeFoodSafe(game.snakes, game.food, gridSize)
     if (!f) break
-    game.food.push(f)
+    game.food.push({ x: f.x, y: f.y, type: 'regular' })
+    needed--
   }
 
   // ── Phase 7: Broadcast ────────────────────────────────────────────
@@ -332,6 +354,7 @@ function tick(io, roomId) {
       name: s.name,
       alive: s.alive,
       score: s.score,
+      lengthAtDeath: s.lengthAtDeath || null,
     })),
     food: game.food,
   }
@@ -385,15 +408,33 @@ function handleDirectionChange(roomId, playerId, direction) {
 function killSnakeByDisconnect(roomId, playerId) {
   const room = roomService.getRoom(roomId)
   if (!room || !room.game) return
-  const snake = room.game.snakes[playerId]
+  const game = room.game
+  const snake = game.snakes[playerId]
   if (!snake || !snake.alive) return
+
   snake.alive = false
-  if (room.game.mode === 'classic') {
-    room.game.deathLog.push({ playerId, length: snake.body.length, score: snake.score })
+  if (game.mode === 'classic') {
+    game.deathLog.push({ playerId, length: snake.body.length, score: snake.score })
   } else {
-    snake.body = []
-    // Don't respawn disconnected players
+    snake.lengthAtDeath = snake.body.length
+    // Disconnected players don't respawn in timed mode
   }
+
+  // Convert body to corpse food
+  const foodPos = new Set(game.food.map((f) => `${f.x},${f.y}`))
+  const alivePos = new Set()
+  for (const s of Object.values(game.snakes)) {
+    if (s.playerId === playerId || !s.alive) continue
+    for (const seg of s.body) alivePos.add(`${seg.x},${seg.y}`)
+  }
+  for (const seg of snake.body) {
+    const key = `${seg.x},${seg.y}`
+    if (!foodPos.has(key) && !alivePos.has(key)) {
+      game.food.push({ x: seg.x, y: seg.y, type: 'corpse' })
+      foodPos.add(key)
+    }
+  }
+  snake.body = []
 }
 
 function endGame(io, roomId) {
@@ -440,13 +481,14 @@ function endGame(io, roomId) {
 
     if (rankings.length > 0) winnerId = rankings[0].playerId
   } else {
-    // Timed: rank all by current snake length
-    const allSnakes = Object.values(game.snakes).sort((a, b) => b.body.length - a.body.length)
+    // Timed: rank all by snake length (alive use body.length; dead use lengthAtDeath)
+    const effectiveLen = (s) => s.alive ? s.body.length : (s.lengthAtDeath || 0)
+    const allSnakes = Object.values(game.snakes).sort((a, b) => effectiveLen(b) - effectiveLen(a))
     rankings = allSnakes.map((snake, i) => ({
       playerId: snake.playerId,
       name: snake.name,
       color: snake.color,
-      length: snake.body.length,
+      length: effectiveLen(snake),
       score: snake.score,
       placement: i + 1,
     }))
