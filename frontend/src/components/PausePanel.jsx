@@ -60,9 +60,7 @@ export default function PausePanel({ roomId, gameGridSize, gameTickMs }) {
           <input
             type="range" min={1} max={10} step={1}
             value={localSpeed}
-            onChange={(e) => setLocalSpeed(Number(e.target.value))}
-            onMouseUp={(e) => commitSpeed(e.target.value)}
-            onTouchEnd={(e) => commitSpeed(e.target.value)}
+            onChange={(e) => { const v = Number(e.target.value); setLocalSpeed(v); commitSpeed(v) }}
             className="w-full accent-blue-500 cursor-pointer"
           />
           <div className="flex justify-between text-xs text-gray-600 mt-1">

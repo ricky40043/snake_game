@@ -196,9 +196,7 @@ export default function Lobby() {
                   min={30} max={600} step={10}
                   value={localDuration}
                   disabled={!state.isHost}
-                  onChange={(e) => setLocalDuration(Number(e.target.value))}
-                  onMouseUp={(e) => commitDuration(e.target.value)}
-                  onTouchEnd={(e) => commitDuration(e.target.value)}
+                  onChange={(e) => { const v = Number(e.target.value); setLocalDuration(v); commitDuration(v) }}
                   className="w-full accent-orange-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-gray-600 mt-1">
@@ -219,9 +217,7 @@ export default function Lobby() {
                 type="range" min={10} max={60} step={1}
                 value={localGrid}
                 disabled={!state.isHost}
-                onChange={(e) => setLocalGrid(Number(e.target.value))}
-                onMouseUp={(e) => commitGrid(e.target.value)}
-                onTouchEnd={(e) => commitGrid(e.target.value)}
+                onChange={(e) => { const v = Number(e.target.value); setLocalGrid(v); commitGrid(v) }}
                 className="w-full accent-green-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
               />
               <div className="flex justify-between text-xs text-gray-600 mt-1">
@@ -239,9 +235,7 @@ export default function Lobby() {
                 type="range" min={1} max={10} step={1}
                 value={localSpeed}
                 disabled={!state.isHost}
-                onChange={(e) => setLocalSpeed(Number(e.target.value))}
-                onMouseUp={(e) => commitSpeed(e.target.value)}
-                onTouchEnd={(e) => commitSpeed(e.target.value)}
+                onChange={(e) => { const v = Number(e.target.value); setLocalSpeed(v); commitSpeed(v) }}
                 className="w-full accent-blue-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
               />
               <div className="flex justify-between text-xs text-gray-600 mt-1">

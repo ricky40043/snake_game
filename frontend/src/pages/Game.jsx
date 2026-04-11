@@ -133,6 +133,34 @@ export default function Game() {
             </span>
           )}
         </div>
+
+        {/* Centre: mini snake showing my color */}
+        {mySnake && (() => {
+          const c = mySnake.color
+          const s = 7   // segment px
+          const g = 2   // gap px
+          const u = s + g
+          // S-shape: 3 right on top, turn down, 3 left on bottom
+          const segs = [
+            { x: u*2, y: 0 }, { x: u, y: 0 }, { x: 0, y: 0 },   // head→left
+            { x: 0, y: u },                                         // turn
+            { x: 0, y: u*2 }, { x: u, y: u*2 }, { x: u*2, y: u*2 }, // tail→right
+          ]
+          return (
+            <svg width={u*3} height={u*3-g} style={{ display: 'block', flexShrink: 0 }}>
+              {segs.map((p, i) => (
+                <rect
+                  key={i} x={p.x} y={p.y} width={s} height={s} rx={2}
+                  fill={c}
+                  opacity={i === 0 ? 1 : Math.max(0.25, 1 - i * 0.12)}
+                />
+              ))}
+              {/* eye on head */}
+              <circle cx={u*2 + s - 2} cy={3} r={1.2} fill="#000" opacity={0.7} />
+            </svg>
+          )
+        })()}
+
         <div className="flex items-center gap-3 text-xs">
           {isTimed && state.timeLeft !== null && (
             <span className={`font-mono font-bold text-base ${timerColor}`}>
