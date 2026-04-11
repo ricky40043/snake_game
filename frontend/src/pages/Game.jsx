@@ -379,21 +379,25 @@ export default function Game() {
 
       {/* Mobile controls — hidden when game is finished so GameOver overlay isn't obscured */}
       {state.status !== 'finished' && (
-        <div className="sm:hidden flex flex-col items-center gap-2 pb-4 pt-2 shrink-0">
-          <button onPointerDown={() => sendDir('UP')}
-            className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↑</button>
-          <div className="flex gap-2 items-center">
-            <button onPointerDown={() => sendDir('LEFT')}
-              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">←</button>
-            <button onPointerDown={() => sendDir('DOWN')}
-              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↓</button>
-            <button onPointerDown={() => sendDir('RIGHT')}
-              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">→</button>
-            <button onPointerDown={sendShoot}
-              className="w-14 h-14 bg-red-700 active:bg-red-600 rounded-xl text-2xl flex items-center justify-center ml-1 border-2 border-red-500">
-              ⚡
-            </button>
+        <div className="sm:hidden flex items-end justify-center gap-4 pb-4 pt-2 shrink-0">
+          {/* D-pad: keep cross symmetric */}
+          <div className="flex flex-col items-center gap-2">
+            <button onPointerDown={() => sendDir('UP')}
+              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↑</button>
+            <div className="flex gap-2">
+              <button onPointerDown={() => sendDir('LEFT')}
+                className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">←</button>
+              <button onPointerDown={() => sendDir('DOWN')}
+                className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↓</button>
+              <button onPointerDown={() => sendDir('RIGHT')}
+                className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">→</button>
+            </div>
           </div>
+          {/* Attack button — aligned to bottom row */}
+          <button onPointerDown={sendShoot}
+            className="w-14 h-14 bg-red-700 active:bg-red-600 rounded-xl text-2xl flex items-center justify-center border-2 border-red-500">
+            ⚡
+          </button>
         </div>
       )}
     </div>
