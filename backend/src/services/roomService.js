@@ -1,0 +1,150 @@
+const { v4: uuidv4 } = require('uuid')
+const config = require('../config')
+
+const rooms = new Map() // roomId -> Room
+
+const PLAYER_COLORS = [
+  '#4ade80', // green
+  '#60a5fa', // blue
+  '#f97316', // orange
+  '#e879f9', // purple
+  '#facc15', // yellow
+  '#f87171', // red
+  '#34d399', // teal
+]
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  for (let attempt = 0; attempt < 20; attempt++) {
+    let code = ''
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)]
+    }
+    if (!rooms.has(code)) return code
+  }
+  throw new Error('Failed to generate unique room code')
+}
+
+function createRoom(hostId) {
+  const roomId = generateRoomCode()
+  const room = {
+    roomId,
+    hostId,
+    status: 'waiting', // waiting | playing | finished
+    players: new Map(), // playerId -> Player
+    settings: {
+      gridSize: config.gridSize,
+      tickMs: config.tickMs,
+    },
+    game: null,
+    cleanupTimer: null,
+    createdAt: Date.now(),
+  }
+  rooms.set(roomId, room)
+  return roomId
+}
+
+function getRoom(roomId) {
+  return rooms.get(roomId) || null
+}
+
+function addPlayer(roomId, socketId, name, existingPlayerId = null) {
+  const room = rooms.get(roomId)
+  if (!room) return { error: 'ROOM_NOT_FOUND' }
+
+  // Reconnect path
+  if (existingPlayerId && room.players.has(existingPlayerId)) {
+    const player = room.players.get(existingPlayerId)
+    player.socketId = socketId
+    player.isOnline = true
+    return { player, isRejoin: true }
+  }
+
+  if (room.status === 'playing') return { error: 'GAME_ALREADY_STARTED' }
+  if (room.status === 'finished') return { error: 'GAME_FINISHED' }
+  if (room.players.size >= config.maxPlayersPerRoom) return { error: 'ROOM_FULL' }
+
+  const playerId = existingPlayerId || uuidv4()
+  const colorIndex = room.players.size % PLAYER_COLORS.length
+  const player = {
+    playerId,
+    name: name.trim().slice(0, 12) || 'Player',
+    socketId,
+    color: PLAYER_COLORS[colorIndex],
+    isAlive: true,
+    isOnline: true,
+    score: 0,
+  }
+  room.players.set(playerId, player)
+  return { player, isRejoin: false }
+}
+
+function removePlayer(roomId, playerId) {
+  const room = rooms.get(roomId)
+  if (!room) return
+  room.players.delete(playerId)
+  if (room.players.size === 0) {
+    rooms.delete(roomId)
+  }
+}
+
+function setPlayerOffline(roomId, playerId) {
+  const room = rooms.get(roomId)
+  if (!room) return
+  const player = room.players.get(playerId)
+  if (player) player.isOnline = false
+}
+
+function getPublicPlayers(room) {
+  return [...room.players.values()].map((p) => ({
+    playerId: p.playerId,
+    name: p.name,
+    color: p.color,
+    isAlive: p.isAlive,
+    isOnline: p.isOnline,
+    score: p.score,
+  }))
+}
+
+function scheduleCleanup(roomId) {
+  const room = rooms.get(roomId)
+  if (!room) return
+  if (room.cleanupTimer) clearTimeout(room.cleanupTimer)
+  room.cleanupTimer = setTimeout(() => {
+    rooms.delete(roomId)
+  }, config.roomCleanupMs)
+}
+
+function resetRoom(roomId) {
+  const room = rooms.get(roomId)
+  if (!room) return false
+  if (room.cleanupTimer) {
+    clearTimeout(room.cleanupTimer)
+    room.cleanupTimer = null
+  }
+  room.status = 'waiting'
+  room.game = null
+  for (const player of room.players.values()) {
+    player.isAlive = true
+    player.score = 0
+  }
+  return true
+}
+
+function deleteRoom(roomId) {
+  const room = rooms.get(roomId)
+  if (room && room.cleanupTimer) clearTimeout(room.cleanupTimer)
+  rooms.delete(roomId)
+}
+
+module.exports = {
+  createRoom,
+  getRoom,
+  addPlayer,
+  removePlayer,
+  setPlayerOffline,
+  getPublicPlayers,
+  scheduleCleanup,
+  resetRoom,
+  deleteRoom,
+}

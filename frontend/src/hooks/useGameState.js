@@ -1,0 +1,125 @@
+import { useState, useEffect, useCallback } from 'react'
+import { socket } from '../socket'
+
+const initialState = {
+  // Room
+  status: 'idle', // idle | lobby | playing | finished
+  roomId: null,
+  myPlayerId: null,
+  isHost: false,
+  players: [],
+  settings: {},
+  hostId: null,
+
+  // Game
+  gridSize: 20,
+  snakes: [],
+  food: [],
+  tick: 0,
+
+  // Result
+  winnerId: null,
+  winnerName: null,
+  rankings: [],
+
+  error: null,
+}
+
+export function useGameState() {
+  const [state, setState] = useState(initialState)
+
+  const set = useCallback((partial) => {
+    setState((prev) => ({ ...prev, ...partial }))
+  }, [])
+
+  useEffect(() => {
+    socket.on('room_joined', ({ playerId, isHost, isRejoin, roomState }) => {
+      setState((prev) => ({
+        ...prev,
+        myPlayerId: playerId,
+        isHost,
+        roomId: roomState.roomId,
+        status: roomState.status === 'playing' ? 'playing' : 'lobby',
+        players: roomState.players,
+        settings: roomState.settings,
+        hostId: roomState.hostId,
+        error: null,
+      }))
+    })
+
+    socket.on('room_updated', (roomState) => {
+      setState((prev) => ({
+        ...prev,
+        roomId: roomState.roomId || prev.roomId,
+        players: roomState.players,
+        settings: roomState.settings,
+        hostId: roomState.hostId,
+        status: prev.status === 'idle' ? 'idle' : roomState.status === 'waiting' ? 'lobby' : prev.status,
+      }))
+    })
+
+    socket.on('game_started', ({ gridSize, tickMs, snakes, food }) => {
+      setState((prev) => ({
+        ...prev,
+        status: 'playing',
+        gridSize,
+        snakes,
+        food,
+        tick: 0,
+        winnerId: null,
+        winnerName: null,
+        rankings: [],
+      }))
+    })
+
+    socket.on('game_tick', ({ tick, snakes, food }) => {
+      setState((prev) => ({ ...prev, tick, snakes, food }))
+    })
+
+    socket.on('game_over', ({ winnerId, winnerName, rankings }) => {
+      setState((prev) => ({
+        ...prev,
+        status: 'finished',
+        winnerId,
+        winnerName,
+        rankings,
+      }))
+    })
+
+    socket.on('game_reset', () => {
+      setState((prev) => ({
+        ...prev,
+        status: 'lobby',
+        snakes: [],
+        food: [],
+        tick: 0,
+        winnerId: null,
+        winnerName: null,
+        rankings: [],
+      }))
+    })
+
+    socket.on('error', ({ code, message }) => {
+      set({ error: { code, message } })
+    })
+
+    socket.on('connect_error', () => {
+      set({ error: { code: 'CONNECT_ERROR', message: '無法連線到伺服器' } })
+    })
+
+    return () => {
+      socket.off('room_joined')
+      socket.off('room_updated')
+      socket.off('game_started')
+      socket.off('game_tick')
+      socket.off('game_over')
+      socket.off('game_reset')
+      socket.off('error')
+      socket.off('connect_error')
+    }
+  }, [set])
+
+  const clearError = useCallback(() => set({ error: null }), [set])
+
+  return { state, clearError }
+}
