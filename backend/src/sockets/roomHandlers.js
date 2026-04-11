@@ -152,6 +152,29 @@ function registerRoomHandlers(io, socket, socketMap) {
     io.to(roomId).emit('game_reset')
   })
 
+  // Host updates settings
+  socket.on('update_settings', ({ roomId, settings } = {}) => {
+    const info = socketMap.get(socket.id)
+    if (!info) return
+
+    const room = roomService.getRoom(roomId)
+    if (!room) return socket.emit('error', { code: 'ROOM_NOT_FOUND', message: 'Room not found' })
+    if (room.hostId !== info.playerId) return
+    if (room.status !== 'waiting') return
+
+    const VALID_GRID = [15, 20, 30]
+    const VALID_TICK = [80, 130, 200]
+
+    if (settings.gridSize && VALID_GRID.includes(settings.gridSize)) {
+      room.settings.gridSize = settings.gridSize
+    }
+    if (settings.tickMs && VALID_TICK.includes(settings.tickMs)) {
+      room.settings.tickMs = settings.tickMs
+    }
+
+    io.to(roomId).emit('settings_updated', { settings: room.settings })
+  })
+
   // Leave room
   socket.on('leave_room', ({ roomId } = {}) => {
     const info = socketMap.get(socket.id)

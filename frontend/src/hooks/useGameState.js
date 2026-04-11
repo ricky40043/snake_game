@@ -99,6 +99,10 @@ export function useGameState() {
       }))
     })
 
+    socket.on('settings_updated', ({ settings }) => {
+      setState((prev) => ({ ...prev, settings }))
+    })
+
     socket.on('error', ({ code, message }) => {
       set({ error: { code, message } })
     })
@@ -114,6 +118,7 @@ export function useGameState() {
       socket.off('game_tick')
       socket.off('game_over')
       socket.off('game_reset')
+      socket.off('settings_updated')
       socket.off('error')
       socket.off('connect_error')
     }

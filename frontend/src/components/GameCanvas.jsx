@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 
-const GRID_COLOR = '#1a1a25'
+const GRID_COLOR = '#2a2a3f'
 const BG_COLOR = '#11111a'
 
 export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
@@ -19,7 +19,7 @@ export default function GameCanvas({ snakes, food, gridSize, myPlayerId }) {
 
     // Grid lines
     ctx.strokeStyle = GRID_COLOR
-    ctx.lineWidth = 0.5
+    ctx.lineWidth = 1
     for (let i = 0; i <= gridSize; i++) {
       ctx.beginPath()
       ctx.moveTo(i * tileSize, 0)
