@@ -59,6 +59,7 @@ export function useGameState() {
         players: roomState.players,
         settings: roomState.settings,
         hostId: roomState.hostId,
+        isHost: roomState.hostId === prev.myPlayerId,
         status: prev.status === 'idle' ? 'idle' : roomState.status === 'waiting' ? 'lobby' : prev.status,
       }))
     })

@@ -211,6 +211,8 @@ function registerRoomHandlers(io, socket, socketMap) {
     const room = roomService.getRoom(roomId)
     if (!room) return
 
+    const wasHost = room.hostId === playerId
+
     if (room.status === 'playing') {
       gameService.killSnakeByDisconnect(roomId, playerId)
     }
@@ -220,14 +222,22 @@ function registerRoomHandlers(io, socket, socketMap) {
     socket.emit('room_left')
 
     const updatedRoom = roomService.getRoom(roomId)
-    if (updatedRoom) {
-      io.to(roomId).emit('room_updated', { roomId,
-        players: roomService.getPublicPlayers(updatedRoom),
-        status: updatedRoom.status,
-        settings: updatedRoom.settings,
-        hostId: updatedRoom.hostId,
-      })
+    if (!updatedRoom) return
+
+    // Transfer host to next online player if host left before game started
+    if (wasHost && updatedRoom.status === 'waiting' && updatedRoom.players.size > 0) {
+      const nextHost = [...updatedRoom.players.values()].find((p) => p.isOnline)
+                    || [...updatedRoom.players.values()][0]
+      if (nextHost) updatedRoom.hostId = nextHost.playerId
     }
+
+    io.to(roomId).emit('room_updated', {
+      roomId,
+      players: roomService.getPublicPlayers(updatedRoom),
+      status: updatedRoom.status,
+      settings: updatedRoom.settings,
+      hostId: updatedRoom.hostId,
+    })
   })
 }
 
