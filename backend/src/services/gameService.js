@@ -73,18 +73,29 @@ function findRespawnPos(snakes, existingFood, gridSize) {
   }
   for (const f of existingFood) occupied.add(`${f.x},${f.y}`)
 
+  // Pick the direction with the most room before hitting a wall
+  function bestDir(x, y) {
+    const distances = {
+      UP:    y,
+      DOWN:  gridSize - 1 - y,
+      LEFT:  x,
+      RIGHT: gridSize - 1 - x,
+    }
+    return Object.entries(distances).reduce((best, [d, dist]) => dist > best[1] ? [d, dist] : best, ['UP', -1])[0]
+  }
+
   // Try safe (not near any snake head)
   for (let attempt = 0; attempt < 300; attempt++) {
     const x = Math.floor(Math.random() * (gridSize - 4)) + 2
     const y = Math.floor(Math.random() * (gridSize - 4)) + 2
     const key = `${x},${y}`
-    if (!occupied.has(key) && !danger.has(key)) return { x, y, dir: DIRS[Math.floor(Math.random() * 4)] }
+    if (!occupied.has(key) && !danger.has(key)) return { x, y, dir: bestDir(x, y) }
   }
   // Fallback: anywhere unoccupied
   for (let attempt = 0; attempt < 200; attempt++) {
     const x = Math.floor(Math.random() * gridSize)
     const y = Math.floor(Math.random() * gridSize)
-    if (!occupied.has(`${x},${y}`)) return { x, y, dir: DIRS[Math.floor(Math.random() * 4)] }
+    if (!occupied.has(`${x},${y}`)) return { x, y, dir: bestDir(x, y) }
   }
   return null
 }
