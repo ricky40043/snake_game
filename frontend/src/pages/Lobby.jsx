@@ -45,6 +45,7 @@ export default function Lobby() {
   const [localGrid, setLocalGrid] = useState(20)
   const [localSpeed, setLocalSpeed] = useState(5)
   const [localDuration, setLocalDuration] = useState(180)
+  const [localFood, setLocalFood] = useState(3)
 
   const joinUrl = roomId ? `${window.location.origin}/?join=${roomId}` : ''
 
@@ -52,7 +53,8 @@ export default function Lobby() {
     if (state.settings?.gridSize) setLocalGrid(state.settings.gridSize)
     if (state.settings?.tickMs) setLocalSpeed(tickMsToSpeed(state.settings.tickMs))
     if (state.settings?.duration) setLocalDuration(state.settings.duration)
-  }, [state.settings?.gridSize, state.settings?.tickMs, state.settings?.duration])
+    if (state.settings?.foodCount) setLocalFood(state.settings.foodCount)
+  }, [state.settings?.gridSize, state.settings?.tickMs, state.settings?.duration, state.settings?.foodCount])
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -92,6 +94,7 @@ export default function Lobby() {
   function commitGrid(val) { updateSettings('gridSize', Number(val)) }
   function commitSpeed(val) { updateSettings('tickMs', speedToTickMs(Number(val))) }
   function commitDuration(val) { updateSettings('duration', Number(val)) }
+  function commitFood(val) { updateSettings('foodCount', Number(val)) }
   function setMode(mode) { updateSettings('mode', mode) }
 
   const settings = state.settings || {}
@@ -142,7 +145,10 @@ export default function Lobby() {
 
             {/* My color */}
             {(() => {
-              const COLORS = ['#4ade80','#60a5fa','#f97316','#e879f9','#facc15','#f87171','#34d399']
+              const COLORS = [
+                '#22c55e','#3b82f6','#f97316','#a855f7','#eab308','#ef4444','#06b6d4','#ec4899','#84cc16','#14b8a6',
+                '#4ade80','#6366f1','#fb923c','#c026d3','#f59e0b','#f87171','#0ea5e9','#f472b6','#a3e635','#2dd4bf',
+              ]
               const myColor = state.players.find((p) => p.playerId === state.myPlayerId)?.color
               return (
                 <div className="mb-5">
@@ -240,7 +246,7 @@ export default function Lobby() {
             </div>
 
             {/* Speed */}
-            <div>
+            <div className="mb-5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-300">速度</span>
                 <span className="text-sm font-mono font-bold text-blue-400">{speedLabel(localSpeed)}</span>
@@ -254,6 +260,24 @@ export default function Lobby() {
               />
               <div className="flex justify-between text-xs text-gray-600 mt-1">
                 <span>慢</span><span>快</span>
+              </div>
+            </div>
+
+            {/* Food count */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">食物數量</span>
+                <span className="text-sm font-mono font-bold text-red-400">{localFood} 個</span>
+              </div>
+              <input
+                type="range" min={1} max={10} step={1}
+                value={localFood}
+                disabled={!state.isHost}
+                onChange={(e) => { const v = Number(e.target.value); setLocalFood(v); commitFood(v) }}
+                className="w-full accent-red-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-gray-600 mt-1">
+                <span>1 個</span><span>10 個</span>
               </div>
             </div>
 

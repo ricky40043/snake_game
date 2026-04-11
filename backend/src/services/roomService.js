@@ -4,13 +4,28 @@ const config = require('../config')
 const rooms = new Map() // roomId -> Room
 
 const PLAYER_COLORS = [
-  '#4ade80', // green
-  '#60a5fa', // blue
+  // First 10: high-contrast primaries
+  '#22c55e', // green
+  '#3b82f6', // blue
   '#f97316', // orange
-  '#e879f9', // purple
-  '#facc15', // yellow
-  '#f87171', // red
-  '#34d399', // teal
+  '#a855f7', // purple
+  '#eab308', // yellow
+  '#ef4444', // red
+  '#06b6d4', // cyan
+  '#ec4899', // pink
+  '#84cc16', // lime
+  '#14b8a6', // teal
+  // Next 10: between the primaries
+  '#4ade80', // light green  (green ↔ lime)
+  '#6366f1', // indigo       (blue ↔ purple)
+  '#fb923c', // light orange (orange ↔ yellow)
+  '#c026d3', // fuchsia      (purple ↔ pink)
+  '#f59e0b', // amber        (yellow ↔ orange)
+  '#f87171', // light red    (red ↔ pink)
+  '#0ea5e9', // sky blue     (cyan ↔ blue)
+  '#f472b6', // light pink   (pink ↔ purple)
+  '#a3e635', // yellow-green (lime ↔ yellow)
+  '#2dd4bf', // turquoise    (teal ↔ cyan)
 ]
 
 function generateRoomCode() {
@@ -37,6 +52,7 @@ function createRoom(hostId) {
       tickMs: config.tickMs,
       mode: 'classic',   // 'classic' | 'timed'
       duration: 180,     // seconds (timed mode only)
+      foodCount: config.foodCount,
     },
     game: null,
     cleanupTimer: null,

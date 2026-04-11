@@ -4,7 +4,7 @@ module.exports = {
     process.env.NODE_ENV === 'production'
       ? '*'
       : ['http://localhost:5173', 'http://localhost:3001'],
-  maxPlayersPerRoom: 7,
+  maxPlayersPerRoom: 20,
   minPlayersToStart: 1,
   foodCount: 3,
   gridSize: 20,

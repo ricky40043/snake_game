@@ -16,14 +16,29 @@ function getSpawnConfigs(gridSize) {
   const m = 2
   const c = Math.floor(gridSize / 2)
   const far = gridSize - 1 - m
+  const q1 = Math.floor(gridSize / 4)
+  const q3 = Math.floor(gridSize * 3 / 4)
   return [
-    { startX: m, startY: m, dir: 'RIGHT' },
-    { startX: far, startY: far, dir: 'LEFT' },
-    { startX: far, startY: m, dir: 'DOWN' },
-    { startX: m, startY: far, dir: 'UP' },
-    { startX: c, startY: m, dir: 'DOWN' },
-    { startX: m, startY: c, dir: 'RIGHT' },
-    { startX: far, startY: c, dir: 'LEFT' },
+    { startX: m,   startY: m,   dir: 'RIGHT' },
+    { startX: far, startY: far, dir: 'LEFT'  },
+    { startX: far, startY: m,   dir: 'DOWN'  },
+    { startX: m,   startY: far, dir: 'UP'    },
+    { startX: c,   startY: m,   dir: 'DOWN'  },
+    { startX: m,   startY: c,   dir: 'RIGHT' },
+    { startX: far, startY: c,   dir: 'LEFT'  },
+    { startX: c,   startY: far, dir: 'UP'    },
+    { startX: q1,  startY: m,   dir: 'DOWN'  },
+    { startX: q3,  startY: m,   dir: 'DOWN'  },
+    { startX: q1,  startY: far, dir: 'UP'    },
+    { startX: q3,  startY: far, dir: 'UP'    },
+    { startX: m,   startY: q1,  dir: 'RIGHT' },
+    { startX: m,   startY: q3,  dir: 'RIGHT' },
+    { startX: far, startY: q1,  dir: 'LEFT'  },
+    { startX: far, startY: q3,  dir: 'LEFT'  },
+    { startX: q1,  startY: q1,  dir: 'RIGHT' },
+    { startX: q3,  startY: q1,  dir: 'LEFT'  },
+    { startX: q1,  startY: q3,  dir: 'RIGHT' },
+    { startX: q3,  startY: q3,  dir: 'LEFT'  },
   ]
 }
 
@@ -104,7 +119,7 @@ function startGame(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room) return
 
-  const { gridSize, tickMs, mode, duration } = room.settings
+  const { gridSize, tickMs, mode, duration, foodCount } = room.settings
   const alivePlayers = [...room.players.values()].filter((p) => p.isOnline)
   const spawnConfigs = getSpawnConfigs(gridSize)
 
@@ -123,8 +138,9 @@ function startGame(io, roomId) {
     }
   })
 
+  const gameFoodCount = (foodCount >= 1 && foodCount <= 10) ? foodCount : config.foodCount
   const food = []
-  for (let i = 0; i < config.foodCount; i++) {
+  for (let i = 0; i < gameFoodCount; i++) {
     const f = placeFoodSafe(snakes, food, gridSize)
     if (f) food.push(f)
   }
@@ -134,6 +150,7 @@ function startGame(io, roomId) {
     tickMs,
     mode: mode || 'classic',
     duration: (duration || 180) * 1000, // store as ms
+    foodCount: gameFoodCount,
     tick: 0,
     snakes,
     food,
@@ -275,7 +292,7 @@ function tick(io, roomId) {
 
   // ── Phase 6: Respawn food ─────────────────────────────────────────
   game.food = game.food.filter((_, i) => !eatenIdx.has(i))
-  while (game.food.length < config.foodCount) {
+  while (game.food.length < game.foodCount) {
     const f = placeFoodSafe(game.snakes, game.food, gridSize)
     if (!f) break
     game.food.push(f)
