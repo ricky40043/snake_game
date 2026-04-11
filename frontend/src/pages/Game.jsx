@@ -157,6 +157,31 @@ export default function Game() {
             />
           </div>
 
+          {/* ── Top-3 leaderboard overlay ──────────────────────── */}
+          {state.snakes.length > 0 && state.status === 'playing' && (() => {
+            const MEDALS = ['🥇', '🥈', '🥉']
+            const top3 = state.snakes
+              .slice()
+              .sort((a, b) => b.body.length - a.body.length)
+              .slice(0, 3)
+            return (
+              <div className="absolute top-2 left-2 z-10 pointer-events-none flex flex-col gap-1">
+                {top3.map((s, i) => (
+                  <div
+                    key={s.playerId}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-semibold backdrop-blur-sm
+                      ${s.playerId === state.myPlayerId ? 'bg-white/20 border border-white/30' : 'bg-black/50'}`}
+                  >
+                    <span className="text-sm leading-none">{MEDALS[i]}</span>
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="text-white truncate max-w-[80px]">{s.name}</span>
+                    <span className="text-gray-300 font-mono ml-auto pl-2">{s.body.length}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+
           {/* ── Big countdown (last 10 s) ──────────────────────── */}
           {showBigCountdown && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
