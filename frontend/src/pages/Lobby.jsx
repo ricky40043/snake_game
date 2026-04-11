@@ -5,16 +5,13 @@ import { socket } from '../socket'
 import { getHostId, getPlayerId, savePlayerId, getPlayerName } from '../storage'
 import { useGame } from '../App'
 
-const GRID_OPTIONS = [
-  { label: '小', value: 15 },
-  { label: '中', value: 20 },
-  { label: '大', value: 30 },
-]
-const SPEED_OPTIONS = [
-  { label: '慢', value: 200 },
-  { label: '中', value: 130 },
-  { label: '快', value: 80 },
-]
+// speed slider: 1(慢)~10(快) ↔ tickMs
+function speedToTickMs(speed) {
+  return Math.round(250 - (speed - 1) * (190 / 9))
+}
+function tickMsToSpeed(tickMs) {
+  return Math.max(1, Math.min(10, Math.round(((250 - tickMs) / 190) * 9) + 1))
+}
 
 export default function Lobby() {
   const navigate = useNavigate()
@@ -23,7 +20,17 @@ export default function Lobby() {
   const { state, clearError } = useGame()
   const [copied, setCopied] = useState('')
 
+  // Local slider state (visual while dragging)
+  const [localGrid, setLocalGrid] = useState(20)
+  const [localSpeed, setLocalSpeed] = useState(5)
+
   const joinUrl = roomId ? `${window.location.origin}/?join=${roomId}` : ''
+
+  // Sync local sliders when server pushes settings
+  useEffect(() => {
+    if (state.settings?.gridSize) setLocalGrid(state.settings.gridSize)
+    if (state.settings?.tickMs)   setLocalSpeed(tickMsToSpeed(state.settings.tickMs))
+  }, [state.settings?.gridSize, state.settings?.tickMs])
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -53,29 +60,26 @@ export default function Lobby() {
 
   function copyUrl() {
     navigator.clipboard.writeText(joinUrl).then(() => {
-      setCopied('url')
-      setTimeout(() => setCopied(''), 2000)
+      setCopied('url'); setTimeout(() => setCopied(''), 2000)
     })
   }
-
   function copyCode() {
     navigator.clipboard.writeText(roomId).then(() => {
-      setCopied('code')
-      setTimeout(() => setCopied(''), 2000)
+      setCopied('code'); setTimeout(() => setCopied(''), 2000)
     })
   }
-
   function startGame() {
     socket.emit('start_game', { roomId })
   }
 
-  function updateSettings(key, value) {
-    socket.emit('update_settings', { roomId, settings: { [key]: value } })
+  // Only emit when drag ends (mouseup / touchend)
+  function commitGrid(val) {
+    socket.emit('update_settings', { roomId, settings: { gridSize: Number(val) } })
+  }
+  function commitSpeed(val) {
+    socket.emit('update_settings', { roomId, settings: { tickMs: speedToTickMs(Number(val)) } })
   }
 
-  const settings = state.settings || {}
-  const gridSize = settings.gridSize || 20
-  const tickMs = settings.tickMs || 130
   const onlinePlayers = state.players.filter((p) => p.isOnline)
   const canStart = state.isHost && onlinePlayers.length >= 1
 
@@ -100,23 +104,19 @@ export default function Lobby() {
         {/* Left: QR + Settings */}
         <div className="flex flex-col gap-4">
 
-          {/* QR Code panel */}
+          {/* QR panel */}
           <div className="bg-[#161b22] border border-[#30363d] rounded-2xl p-5 flex flex-col items-center gap-4">
             <div className="bg-white p-3 rounded-xl">
               <QRCodeSVG value={joinUrl} size={180} />
             </div>
             <p className="text-xs text-gray-500 text-center break-all">{joinUrl}</p>
             <div className="flex gap-2 w-full">
-              <button
-                onClick={copyUrl}
-                className="flex-1 bg-green-500 hover:bg-green-400 text-black font-semibold py-2 rounded-xl text-sm transition"
-              >
+              <button onClick={copyUrl}
+                className="flex-1 bg-green-500 hover:bg-green-400 text-black font-semibold py-2 rounded-xl text-sm transition">
                 {copied === 'url' ? '已複製！' : '分享連結'}
               </button>
-              <button
-                onClick={copyCode}
-                className="flex-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 font-semibold py-2 rounded-xl text-sm transition"
-              >
+              <button onClick={copyCode}
+                className="flex-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 font-semibold py-2 rounded-xl text-sm transition">
                 {copied === 'code' ? '已複製！' : '複製房號'}
               </button>
             </div>
@@ -124,58 +124,61 @@ export default function Lobby() {
 
           {/* Game settings */}
           <div className="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">遊戲設定</h3>
+            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-5">遊戲設定</h3>
 
-            {/* Grid size */}
-            <div className="mb-4">
-              <div className="text-sm text-gray-300 mb-2">地圖大小</div>
-              <div className="flex gap-2">
-                {GRID_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    disabled={!state.isHost}
-                    onClick={() => updateSettings('gridSize', opt.value)}
-                    className={`flex-1 py-2 rounded-xl text-sm font-semibold transition
-                      ${gridSize === opt.value
-                        ? 'bg-green-500 text-black'
-                        : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}
-                      disabled:cursor-default`}
-                  >
-                    {opt.label}
-                    <div className="text-xs font-normal opacity-60">{opt.value}×{opt.value}</div>
-                  </button>
-                ))}
+            {/* Grid size slider */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">地圖大小</span>
+                <span className="text-sm font-mono font-bold text-green-400">{localGrid} × {localGrid}</span>
+              </div>
+              <input
+                type="range"
+                min={10} max={40} step={1}
+                value={localGrid}
+                disabled={!state.isHost}
+                onChange={(e) => setLocalGrid(Number(e.target.value))}
+                onMouseUp={(e) => commitGrid(e.target.value)}
+                onTouchEnd={(e) => commitGrid(e.target.value)}
+                className="w-full accent-green-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-gray-600 mt-1">
+                <span>小</span>
+                <span>大</span>
               </div>
             </div>
 
-            {/* Speed */}
+            {/* Speed slider */}
             <div>
-              <div className="text-sm text-gray-300 mb-2">速度</div>
-              <div className="flex gap-2">
-                {SPEED_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    disabled={!state.isHost}
-                    onClick={() => updateSettings('tickMs', opt.value)}
-                    className={`flex-1 py-2 rounded-xl text-sm font-semibold transition
-                      ${tickMs === opt.value
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}
-                      disabled:cursor-default`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">速度</span>
+                <span className="text-sm font-mono font-bold text-blue-400">
+                  {localSpeed <= 2 ? '很慢' : localSpeed <= 4 ? '慢' : localSpeed <= 6 ? '中' : localSpeed <= 8 ? '快' : '很快'}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1} max={10} step={1}
+                value={localSpeed}
+                disabled={!state.isHost}
+                onChange={(e) => setLocalSpeed(Number(e.target.value))}
+                onMouseUp={(e) => commitSpeed(e.target.value)}
+                onTouchEnd={(e) => commitSpeed(e.target.value)}
+                className="w-full accent-blue-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-gray-600 mt-1">
+                <span>慢</span>
+                <span>快</span>
               </div>
             </div>
 
             {!state.isHost && (
-              <p className="text-xs text-gray-600 mt-3 text-center">只有房主可以修改設定</p>
+              <p className="text-xs text-gray-600 mt-4 text-center">只有房主可以修改設定</p>
             )}
           </div>
         </div>
 
-        {/* Right: Player list + start */}
+        {/* Right: Players + Start */}
         <div className="flex flex-col gap-4">
           <div className="bg-[#161b22] border border-[#30363d] rounded-2xl overflow-hidden flex-1">
             <div className="px-4 py-3 border-b border-[#21262d] text-xs text-gray-500 uppercase tracking-widest">
@@ -199,16 +202,11 @@ export default function Lobby() {
             ))}
           </div>
 
-          <div className="text-xs text-gray-600 text-center">
-            方向鍵 / WASD 控制蛇的方向
-          </div>
+          <div className="text-xs text-gray-600 text-center">方向鍵 / WASD 控制蛇的方向</div>
 
           {state.isHost ? (
-            <button
-              onClick={startGame}
-              disabled={!canStart}
-              className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold py-4 rounded-2xl transition text-lg"
-            >
+            <button onClick={startGame} disabled={!canStart}
+              className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold py-4 rounded-2xl transition text-lg">
               開始遊戲
             </button>
           ) : (

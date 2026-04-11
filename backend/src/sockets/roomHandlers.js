@@ -162,15 +162,10 @@ function registerRoomHandlers(io, socket, socketMap) {
     if (room.hostId !== info.playerId) return
     if (room.status !== 'waiting') return
 
-    const VALID_GRID = [15, 20, 30]
-    const VALID_TICK = [80, 130, 200]
-
-    if (settings.gridSize && VALID_GRID.includes(settings.gridSize)) {
-      room.settings.gridSize = settings.gridSize
-    }
-    if (settings.tickMs && VALID_TICK.includes(settings.tickMs)) {
-      room.settings.tickMs = settings.tickMs
-    }
+    const g = Math.round(Number(settings.gridSize))
+    const t = Math.round(Number(settings.tickMs))
+    if (g >= 10 && g <= 40) room.settings.gridSize = g
+    if (t >= 60 && t <= 250) room.settings.tickMs = t
 
     io.to(roomId).emit('settings_updated', { settings: room.settings })
   })
