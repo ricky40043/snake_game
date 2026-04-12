@@ -115,8 +115,20 @@ function findRespawnPos(snakes, existingFood, gridSize) {
   return null
 }
 
+// ── Wall bounce helper ────────────────────────────────────────────────────────
+function getPerpendicularDirs(dir) {
+  return (dir === 'UP' || dir === 'DOWN') ? ['LEFT', 'RIGHT'] : ['UP', 'DOWN']
+}
+
 // ── Shoot a bullet (available in all modes, costs 1 tail segment) ────────────
 function processShoot(game, playerId) {
+  if (!game.attackEnabled) return
+  // For timed mode, check if attack is unlocked yet
+  if (game.mode === 'timed' && game.attackUnlockRemaining > 0) {
+    const elapsed = Date.now() - game.startTime - (game.totalPausedMs || 0)
+    const remainingSec = Math.max(0, (game.duration - elapsed) / 1000)
+    if (remainingSec > game.attackUnlockRemaining) return // still locked
+  }
   const snake = game.snakes[playerId]
   if (!snake || !snake.alive) return
   if (snake.body.length <= 3) return // minimum length to shoot
@@ -142,7 +154,7 @@ function startGame(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room) return
 
-  const { gridSize, tickMs, mode, duration, foodCount } = room.settings
+  const { gridSize, tickMs, mode, duration, foodCount, attackEnabled, attackUnlockRemaining, wallDeath } = room.settings
   const alivePlayers = [...room.players.values()].filter((p) => p.isOnline)
   const spawnConfigs = getSpawnConfigs(gridSize)
 
@@ -187,8 +199,14 @@ function startGame(io, roomId) {
     intervalId: null,
     totalPausedMs: 0,
     pausedAt: null,
+    attackEnabled: attackEnabled !== false,
+    attackUnlockRemaining: attackUnlockRemaining || 0,
+    wallDeath: wallDeath !== false,
   }
   room.status = 'playing'
+
+  const attackUnlockedNow = room.game.attackEnabled &&
+    (room.game.mode !== 'timed' || room.game.attackUnlockRemaining === 0)
 
   io.to(roomId).emit('game_started', {
     gridSize,
@@ -198,6 +216,10 @@ function startGame(io, roomId) {
     snakes: Object.values(snakes),
     food,
     paused: false,
+    attackEnabled: room.game.attackEnabled,
+    attackUnlockRemaining: room.game.attackUnlockRemaining,
+    attackUnlocked: attackUnlockedNow,
+    wallDeath: room.game.wallDeath,
   })
 
   room.game.intervalId = setInterval(() => tick(io, roomId), tickMs)
@@ -210,6 +232,12 @@ function tick(io, roomId) {
   const game = room.game
   const { gridSize, mode } = game
   game.tick++
+
+  // Remove expired corpse food
+  if (game.food.some(f => f.type === 'corpse')) {
+    const now = Date.now()
+    game.food = game.food.filter(f => f.type !== 'corpse' || !f.expiresAt || f.expiresAt > now)
+  }
 
   // ── Mode 2: check timer first ──────────────────────────────────────
   if (mode === 'timed') {
@@ -291,7 +319,28 @@ function tick(io, roomId) {
         for (const snake of aliveSnakes) {
           if (snake.playerId === bullet.playerId || dead.has(snake.playerId)) continue
           if (snake.body.some((seg) => seg.x === bullet.x && seg.y === bullet.y)) {
-            dead.add(snake.playerId)
+            const hitSnake = snake
+            if (hitSnake.body.length <= 5) {
+              // Too short — die
+              dead.add(hitSnake.playerId)
+            } else {
+              // Remove 5 tail segments, convert to corpse food
+              const removedSegs = hitSnake.body.splice(hitSnake.body.length - 5, 5)
+              const foodPos = new Set(game.food.map(f => `${f.x},${f.y}`))
+              const alivePos = new Set()
+              for (const s of Object.values(game.snakes)) {
+                if (s.playerId === hitSnake.playerId || !s.alive) continue
+                for (const seg of s.body) alivePos.add(`${seg.x},${seg.y}`)
+              }
+              const expiry = Date.now() + 10000
+              for (const seg of removedSegs) {
+                const key = `${seg.x},${seg.y}`
+                if (!foodPos.has(key) && !alivePos.has(key)) {
+                  game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: hitSnake.playerId, expiresAt: expiry })
+                  foodPos.add(key)
+                }
+              }
+            }
             bulletDead = true; break
           }
         }
@@ -306,7 +355,31 @@ function tick(io, roomId) {
   // Wall
   for (const snake of aliveSnakes) {
     const h = snake.body[0]
-    if (h.x < 0 || h.x >= gridSize || h.y < 0 || h.y >= gridSize) dead.add(snake.playerId)
+    if (h.x < 0 || h.x >= gridSize || h.y < 0 || h.y >= gridSize) {
+      if (game.wallDeath) {
+        dead.add(snake.playerId)
+      } else {
+        // Bounce: undo out-of-bounds move, redirect randomly
+        snake.body.shift() // remove out-of-bounds head
+        const neck = snake.body[0] // previous position
+        const perps = getPerpendicularDirs(snake.direction)
+        if (Math.random() < 0.5) perps.reverse()
+        let bounced = false
+        for (const newDir of perps) {
+          const d = DIR_DELTA[newDir]
+          const nx = neck.x + d.dx
+          const ny = neck.y + d.dy
+          if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+            snake.body.unshift({ x: nx, y: ny })
+            snake.direction = newDir
+            snake.nextDirection = newDir
+            bounced = true
+            break
+          }
+        }
+        if (!bounced) dead.add(snake.playerId) // corner with no valid direction
+      }
+    }
   }
 
   // Head-to-head
@@ -371,7 +444,7 @@ function tick(io, roomId) {
     for (const seg of snake.body) {
       const key = `${seg.x},${seg.y}`
       if (!foodPos.has(key) && !alivePos.has(key)) {
-        game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: id })
+        game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: id, expiresAt: Date.now() + 10000 })
         foodPos.add(key)
       }
     }
@@ -424,6 +497,17 @@ function tick(io, roomId) {
   tickPayload.bullets = game.bullets.map((b) => ({
     id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId,
   }))
+
+  // Attack unlock status
+  if (game.attackEnabled) {
+    let attackUnlocked = true
+    if (game.mode === 'timed' && game.attackUnlockRemaining > 0 && tickPayload.timeLeft !== undefined) {
+      attackUnlocked = tickPayload.timeLeft <= game.attackUnlockRemaining
+    }
+    tickPayload.attackUnlocked = attackUnlocked
+  } else {
+    tickPayload.attackUnlocked = false
+  }
 
   io.to(roomId).emit('game_tick', tickPayload)
 
@@ -488,7 +572,7 @@ function killSnakeByDisconnect(roomId, playerId) {
   for (const seg of snake.body) {
     const key = `${seg.x},${seg.y}`
     if (!foodPos.has(key) && !alivePos.has(key)) {
-      game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: playerId })
+      game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: playerId, expiresAt: Date.now() + 10000 })
       foodPos.add(key)
     }
   }

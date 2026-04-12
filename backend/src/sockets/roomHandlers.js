@@ -197,6 +197,10 @@ function registerRoomHandlers(io, socket, socketMap) {
     if (['classic', 'timed'].includes(settings.mode)) room.settings.mode = settings.mode
     if (d >= 30 && d <= 600) room.settings.duration = d
     if (fc >= 1 && fc <= 10) room.settings.foodCount = fc
+    if (typeof settings.attackEnabled === 'boolean') room.settings.attackEnabled = settings.attackEnabled
+    const unlockRem = Math.round(Number(settings.attackUnlockRemaining))
+    if (!isNaN(unlockRem) && unlockRem >= 0 && unlockRem <= 300) room.settings.attackUnlockRemaining = unlockRem
+    if (typeof settings.wallDeath === 'boolean') room.settings.wallDeath = settings.wallDeath
 
     io.to(roomId).emit('settings_updated', { settings: room.settings })
   })

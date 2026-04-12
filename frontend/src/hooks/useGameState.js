@@ -23,6 +23,11 @@ const initialState = {
   respawning: {},
   paused: false,
 
+  // Game settings (also used during play)
+  attackEnabled: true,
+  attackUnlocked: true,
+  wallDeath: true,
+
   // Result
   winnerId: null,
   winnerName: null,
@@ -68,7 +73,7 @@ export function useGameState() {
       }))
     })
 
-    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused }) => {
+    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused, attackEnabled, attackUnlockRemaining, attackUnlocked, wallDeath }) => {
       setState((prev) => ({
         ...prev,
         status: 'playing',
@@ -82,6 +87,9 @@ export function useGameState() {
         timeLeft: mode === 'timed' ? duration : null,
         respawning: {},
         paused: paused || false,
+        attackEnabled: attackEnabled !== false,
+        attackUnlocked: attackUnlocked !== false,
+        wallDeath: wallDeath !== false,
         winnerId: null,
         winnerName: null,
         rankings: [],
@@ -104,7 +112,7 @@ export function useGameState() {
       setState((prev) => ({ ...prev, settings: { ...prev.settings, tickMs } }))
     })
 
-    socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning, bullets }) => {
+    socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning, bullets, attackUnlocked }) => {
       setState((prev) => ({
         ...prev,
         tick,
@@ -113,6 +121,7 @@ export function useGameState() {
         ...(timeLeft !== undefined && { timeLeft }),
         ...(respawning !== undefined && { respawning }),
         ...(bullets !== undefined && { bullets }),
+        ...(attackUnlocked !== undefined && { attackUnlocked }),
       }))
     })
 

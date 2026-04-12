@@ -53,6 +53,9 @@ function createRoom(hostId) {
       mode: 'classic',   // 'classic' | 'timed'
       duration: 180,     // seconds (timed mode only)
       foodCount: config.foodCount,
+      attackEnabled: true,       // whether shooting is allowed
+      attackUnlockRemaining: 0,  // seconds remaining when attack unlocks (0 = always; timed mode only)
+      wallDeath: true,           // whether hitting wall kills snake (false = random bounce)
     },
     game: null,
     cleanupTimer: null,

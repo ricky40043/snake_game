@@ -46,6 +46,7 @@ export default function Lobby() {
   const [localSpeed, setLocalSpeed] = useState(5)
   const [localDuration, setLocalDuration] = useState(180)
   const [localFood, setLocalFood] = useState(3)
+  const [localAttackUnlock, setLocalAttackUnlock] = useState(0)
 
   const joinUrl = roomId ? `${window.location.origin}/?join=${roomId}` : ''
 
@@ -54,7 +55,8 @@ export default function Lobby() {
     if (state.settings?.tickMs) setLocalSpeed(tickMsToSpeed(state.settings.tickMs))
     if (state.settings?.duration) setLocalDuration(state.settings.duration)
     if (state.settings?.foodCount) setLocalFood(state.settings.foodCount)
-  }, [state.settings?.gridSize, state.settings?.tickMs, state.settings?.duration, state.settings?.foodCount])
+    if (state.settings?.attackUnlockRemaining !== undefined) setLocalAttackUnlock(state.settings.attackUnlockRemaining)
+  }, [state.settings?.gridSize, state.settings?.tickMs, state.settings?.duration, state.settings?.foodCount, state.settings?.attackUnlockRemaining, localAttackUnlock])
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -227,6 +229,69 @@ export default function Lobby() {
                 <p className="text-xs text-gray-600 mt-2 text-center">死亡後 10 秒復活，時間到以蛇長度排名</p>
               </div>
             )}
+
+            {/* Attack settings */}
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-gray-300">⚡ 攻擊射擊</span>
+                <button
+                  disabled={!state.isHost}
+                  onClick={() => { if (state.isHost) updateSettings('attackEnabled', !(settings.attackEnabled !== false)) }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:cursor-default
+                    ${settings.attackEnabled !== false ? 'bg-red-500' : 'bg-gray-600'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition
+                    ${settings.attackEnabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {/* Unlock delay — only shown in timed mode when attack is enabled */}
+              {currentMode === 'timed' && settings.attackEnabled !== false && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-400">解鎖時機</span>
+                    <span className="text-xs font-mono font-bold text-red-400">
+                      {localAttackUnlock === 0 ? '遊戲開始即解鎖' : `剩餘 ${localAttackUnlock >= 60 ? `${Math.floor(localAttackUnlock/60)}分` : ''}${localAttackUnlock % 60 > 0 ? `${localAttackUnlock % 60}秒` : ''} 時解鎖`}
+                    </span>
+                  </div>
+                  <input
+                    type="range" min={0} max={180} step={30}
+                    value={localAttackUnlock}
+                    disabled={!state.isHost}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setLocalAttackUnlock(v)
+                      updateSettings('attackUnlockRemaining', v)
+                    }}
+                    className="w-full accent-red-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-600 mt-1">
+                    <span>立即</span><span>剩3分鐘</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Wall death */}
+            <div className="mb-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm text-gray-300">碰牆死亡</span>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {settings.wallDeath !== false ? '碰牆即死' : '碰牆隨機轉向'}
+                  </p>
+                </div>
+                <button
+                  disabled={!state.isHost}
+                  onClick={() => { if (state.isHost) updateSettings('wallDeath', !(settings.wallDeath !== false)) }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:cursor-default
+                    ${settings.wallDeath !== false ? 'bg-green-500' : 'bg-gray-600'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition
+                    ${settings.wallDeath !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            </div>
 
             {/* Grid size */}
             <div className="mb-5">

@@ -71,7 +71,7 @@ export default function Game() {
     // F key: shoot
     if (e.key === 'f' || e.key === 'F') {
       e.preventDefault()
-      if (state.status === 'playing' && !state.paused) socket.emit('shoot', { roomId })
+      if (state.status === 'playing' && !state.paused && state.attackUnlocked) socket.emit('shoot', { roomId })
       return
     }
 
@@ -96,7 +96,7 @@ export default function Game() {
   }
 
   function sendShoot() {
-    if (state.status === 'playing' && !state.paused) socket.emit('shoot', { roomId })
+    if (state.status === 'playing' && !state.paused && state.attackUnlocked) socket.emit('shoot', { roomId })
   }
 
   const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
@@ -161,8 +161,13 @@ export default function Game() {
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isTimed ? 'bg-orange-900/40 text-orange-400' : 'bg-green-900/40 text-green-400'}`}>
             {isTimed ? '⏱ 計時' : '🏆 存活'}
           </span>
-          {state.status === 'playing' && !state.paused && (
+          {state.status === 'playing' && !state.paused && state.attackUnlocked && (
             <span className="text-xs text-gray-600 hidden sm:inline">F 鍵攻擊</span>
+          )}
+          {state.status === 'playing' && !state.attackUnlocked && state.settings?.attackEnabled !== false && (
+            <span className="text-xs text-red-400/70 bg-red-900/20 px-2 py-0.5 rounded-full hidden sm:inline animate-pulse">
+              ⚡ 攻擊鎖定中
+            </span>
           )}
           {state.isHost && state.status === 'playing' && (
             <span className="text-xs text-gray-600 hidden sm:inline">
@@ -395,7 +400,11 @@ export default function Game() {
           </div>
           {/* Attack button — aligned to bottom row */}
           <button onPointerDown={sendShoot}
-            className="w-14 h-14 bg-red-700 active:bg-red-600 rounded-xl text-2xl flex items-center justify-center border-2 border-red-500">
+            className={`w-14 h-14 rounded-xl text-2xl flex items-center justify-center border-2 transition ${
+              state.attackUnlocked
+                ? 'bg-red-700 active:bg-red-600 border-red-500'
+                : 'bg-gray-700 border-gray-600 opacity-40'
+            }`}>
             ⚡
           </button>
         </div>
