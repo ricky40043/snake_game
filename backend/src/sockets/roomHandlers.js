@@ -1,6 +1,7 @@
 const roomService = require('../services/roomService')
 const gameService = require('../services/gameService')
 const reconnectTimers = require('./reconnectTimers')
+const config = require('../config')
 
 function registerRoomHandlers(io, socket, socketMap) {
   // Host creates a new room
@@ -201,6 +202,14 @@ function registerRoomHandlers(io, socket, socketMap) {
     const unlockRem = Math.round(Number(settings.attackUnlockRemaining))
     if (!isNaN(unlockRem) && unlockRem >= 0 && unlockRem <= 300) room.settings.attackUnlockRemaining = unlockRem
     if (typeof settings.wallDeath === 'boolean') room.settings.wallDeath = settings.wallDeath
+
+    const mp = Math.round(Number(settings.maxPlayers))
+    if (!isNaN(mp) && mp >= 2 && mp <= config.maxPlayersPerRoom) {
+      // Can't reduce below current player count
+      if (mp >= room.players.size) {
+        room.settings.maxPlayers = mp
+      }
+    }
 
     io.to(roomId).emit('settings_updated', { settings: room.settings })
   })

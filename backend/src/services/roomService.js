@@ -50,12 +50,13 @@ function createRoom(hostId) {
     settings: {
       gridSize: config.gridSize,
       tickMs: config.tickMs,
-      mode: 'classic',   // 'classic' | 'timed'
-      duration: 180,     // seconds (timed mode only)
+      mode: config.mode,
+      duration: config.duration,
       foodCount: config.foodCount,
-      attackEnabled: true,       // whether shooting is allowed
-      attackUnlockRemaining: 0,  // seconds remaining when attack unlocks (0 = always; timed mode only)
-      wallDeath: true,           // whether hitting wall kills snake (false = random bounce)
+      maxPlayers: config.defaultMaxPlayers,
+      attackEnabled: config.attackEnabled,
+      attackUnlockRemaining: config.attackUnlockRemaining,
+      wallDeath: config.wallDeath,
     },
     game: null,
     cleanupTimer: null,
@@ -83,7 +84,8 @@ function addPlayer(roomId, socketId, name, existingPlayerId = null) {
 
   if (room.status === 'playing') return { error: 'GAME_ALREADY_STARTED' }
   if (room.status === 'finished') return { error: 'GAME_FINISHED' }
-  if (room.players.size >= config.maxPlayersPerRoom) return { error: 'ROOM_FULL' }
+  const playerLimit = Math.min(room.settings.maxPlayers || config.defaultMaxPlayers, config.maxPlayersPerRoom)
+  if (room.players.size >= playerLimit) return { error: 'ROOM_FULL' }
 
   const playerId = existingPlayerId || uuidv4()
   const usedColors = new Set([...room.players.values()].map((p) => p.color))
