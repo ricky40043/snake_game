@@ -11,6 +11,8 @@ const DIR_DELTA = {
 const DIRS = ['UP', 'DOWN', 'LEFT', 'RIGHT']
 const RESPAWN_DELAY_MS = 10000
 const RESPAWN_SAFE_RADIUS = 6
+const INVINCIBLE_MS = 5000
+const START_COUNTDOWN_SEC = 3
 
 function getSpawnConfigs(gridSize) {
   const m = 2
@@ -222,7 +224,21 @@ function startGame(io, roomId) {
     wallDeath: room.game.wallDeath,
   })
 
-  room.game.intervalId = setInterval(() => tick(io, roomId), tickMs)
+  // Countdown START_COUNTDOWN_SEC → 1, then start ticking
+  room.game.countdownTimer = null
+  const emitCountdown = (n) => {
+    if (!room.game) return
+    if (n > 0) {
+      io.to(roomId).emit('game_countdown', { countdown: n })
+      room.game.countdownTimer = setTimeout(() => emitCountdown(n - 1), 1000)
+    } else {
+      room.game.countdownTimer = null
+      if (!room.game.paused) {
+        room.game.intervalId = setInterval(() => tick(io, roomId), tickMs)
+      }
+    }
+  }
+  emitCountdown(START_COUNTDOWN_SEC)
 }
 
 function tick(io, roomId) {
@@ -232,6 +248,8 @@ function tick(io, roomId) {
   const game = room.game
   const { gridSize, mode } = game
   game.tick++
+
+  const now = Date.now()
 
   // Remove expired corpse food
   if (game.food.some(f => f.type === 'corpse')) {
@@ -250,7 +268,6 @@ function tick(io, roomId) {
 
   // ── Mode 2: handle respawns + previews ───────────────────────────
   if (mode === 'timed') {
-    const now = Date.now()
     for (const [pid, respawnAt] of Object.entries(game.respawnQueue)) {
       if (now >= respawnAt) {
         respawnPlayer(game, pid)
@@ -315,9 +332,10 @@ function tick(io, roomId) {
         if (bullet.x < 0 || bullet.x >= gridSize || bullet.y < 0 || bullet.y >= gridSize) {
           bulletDead = true; break
         }
-        // Snake body hit (can't hit shooter)
+        // Snake body hit (can't hit shooter; invincible snakes immune)
         for (const snake of aliveSnakes) {
           if (snake.playerId === bullet.playerId || dead.has(snake.playerId)) continue
+          if (snake.invincibleUntil && snake.invincibleUntil > now) continue
           if (snake.body.some((seg) => seg.x === bullet.x && seg.y === bullet.y)) {
             const hitSnake = snake
             if (hitSnake.body.length <= 5) {
@@ -349,6 +367,22 @@ function tick(io, roomId) {
       if (!bulletDead) bulletsToKeep.push(bullet)
     }
     game.bullets = bulletsToKeep
+  }
+
+  // ── Phase 2.7: Expire invincibility; kill if still overlapping ───
+  for (const snake of aliveSnakes) {
+    if (!snake.invincibleUntil || snake.invincibleUntil > now) continue
+    snake.invincibleUntil = null
+    if (dead.has(snake.playerId)) continue
+    // If head still inside any other alive snake's body/head → die
+    const head = snake.body[0]
+    for (const other of aliveSnakes) {
+      if (other.playerId === snake.playerId || dead.has(other.playerId)) continue
+      if (other.body.some((seg) => seg.x === head.x && seg.y === head.y)) {
+        dead.add(snake.playerId)
+        break
+      }
+    }
   }
 
   // ── Phase 3: Collision detection ──────────────────────────────────
@@ -391,14 +425,23 @@ function tick(io, roomId) {
     headPos.get(key).push(snake.playerId)
   }
   for (const [, ids] of headPos) {
-    if (ids.length > 1) ids.forEach((id) => dead.add(id))
+    if (ids.length > 1) {
+      // If any snake involved is invincible, nobody dies from this collision
+      const anyInvincible = ids.some((id) => {
+        const s = game.snakes[id]
+        return s && s.invincibleUntil && s.invincibleUntil > now
+      })
+      if (!anyInvincible) ids.forEach((id) => dead.add(id))
+    }
   }
 
   // Body
   for (const snake of aliveSnakes) {
     if (dead.has(snake.playerId)) continue
+    if (snake.invincibleUntil && snake.invincibleUntil > now) continue  // invincible: immune to body hits
     const head = snake.body[0]
     for (const other of aliveSnakes) {
+      if (other.invincibleUntil && other.invincibleUntil > now) continue  // can't die by hitting invincible body
       if (other.body.slice(1).some((s) => s.x === head.x && s.y === head.y)) {
         dead.add(snake.playerId)
         break
@@ -480,12 +523,12 @@ function tick(io, roomId) {
       alive: s.alive,
       score: s.score,
       lengthAtDeath: s.lengthAtDeath || null,
+      invincibleUntil: s.invincibleUntil || null,
     })),
     food: game.food,
   }
 
   if (mode === 'timed') {
-    const now = Date.now()
     tickPayload.timeLeft = Math.max(0, Math.ceil((game.duration - (now - game.startTime - (game.totalPausedMs || 0))) / 1000))
     const respawning = {}
     for (const [pid, at] of Object.entries(game.respawnQueue)) {
@@ -534,6 +577,7 @@ function respawnPlayer(game, playerId) {
   snake.direction = pos.dir
   snake.nextDirection = pos.dir
   snake.alive = true
+  snake.invincibleUntil = Date.now() + INVINCIBLE_MS
 }
 
 function handleDirectionChange(roomId, playerId, direction) {
@@ -584,6 +628,10 @@ function endGame(io, roomId) {
   if (!room || !room.game) return
 
   const game = room.game
+  if (game.countdownTimer) {
+    clearTimeout(game.countdownTimer)
+    game.countdownTimer = null
+  }
   clearInterval(game.intervalId)
   game.intervalId = null
 
@@ -671,7 +719,10 @@ function resumeGame(io, roomId) {
   game.paused = false
   game.totalPausedMs = (game.totalPausedMs || 0) + (Date.now() - game.pausedAt)
   game.pausedAt = null
-  game.intervalId = setInterval(() => tick(io, roomId), game.tickMs)
+  // Only start tick if countdown is already done
+  if (!game.countdownTimer) {
+    game.intervalId = setInterval(() => tick(io, roomId), game.tickMs)
+  }
   io.to(roomId).emit('game_resumed')
 }
 

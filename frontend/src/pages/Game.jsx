@@ -79,10 +79,11 @@ export default function Game() {
     const dir = DIR_MAP[e.key]
     if (!dir) return
     e.preventDefault()
+    if (state.startCountdown) return  // wait for countdown
     if (dir === lastDirRef.current) return
     lastDirRef.current = dir
     socket.emit('change_direction', { roomId, direction: dir })
-  }, [roomId, state.isHost, state.paused, state.status, state.mode])
+  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -90,6 +91,7 @@ export default function Game() {
   }, [handleKey])
 
   function sendDir(dir) {
+    if (state.startCountdown) return
     if (dir === lastDirRef.current) return
     lastDirRef.current = dir
     socket.emit('change_direction', { roomId, direction: dir })
@@ -101,6 +103,15 @@ export default function Game() {
 
   const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
   const isAlive = mySnake?.alive ?? true
+
+  // Reset lastDir when this player respawns (false → true) to fix "key doesn't respond" bug
+  const prevIsAliveRef = useRef(true)
+  useEffect(() => {
+    if (!prevIsAliveRef.current && isAlive) {
+      lastDirRef.current = null
+    }
+    prevIsAliveRef.current = isAlive
+  }, [isAlive])
   const isTimed = state.mode === 'timed'
   const isRespawning = isTimed && !isAlive && state.respawning?.[state.myPlayerId] !== undefined
   const respawnCountdown = isRespawning ? (state.respawning[state.myPlayerId] ?? 0) : 0
@@ -112,6 +123,12 @@ export default function Game() {
 
   const showBigCountdown = isTimed && state.status === 'playing' && !state.paused &&
     (state.timeLeft ?? 999) <= 10 && (state.timeLeft ?? 0) > 0
+
+  // Invincibility countdown for mySnake
+  const myInvincibleUntil = mySnake?.invincibleUntil
+  const invincibleSecsLeft = myInvincibleUntil && myInvincibleUntil > Date.now()
+    ? Math.ceil((myInvincibleUntil - Date.now()) / 1000)
+    : 0
 
   // ── Viewport / mobile camera ──────────────────────────────────────────────
   const VIEWPORT_SIZE = 20
@@ -310,6 +327,42 @@ export default function Game() {
                   <div className="text-5xl mb-3">⏸</div>
                   <div className="text-2xl font-bold text-white">遊戲暫停中</div>
                   <div className="text-gray-400 mt-2 text-sm">等待房主繼續…</div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Game start countdown overlay (3-2-1) ──────────── */}
+            {state.startCountdown !== null && state.startCountdown > 0 && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-20 pointer-events-none">
+                <div className="text-center">
+                  <div className="text-white/70 text-lg mb-4 font-medium tracking-widest">遊戲即將開始</div>
+                  <div key={state.startCountdown} className="relative flex items-center justify-center">
+                    <div
+                      className="countdown-ring absolute rounded-full border-4 border-green-400"
+                      style={{ width: '1em', height: '1em', fontSize: 'clamp(80px, 22vmin, 180px)' }}
+                    />
+                    <span
+                      className="countdown-num font-black tabular-nums leading-none"
+                      style={{
+                        fontSize: 'clamp(80px, 22vmin, 180px)',
+                        color: '#4ade80',
+                        textShadow: '0 0 40px rgba(74,222,128,0.9), 0 0 80px rgba(74,222,128,0.5), 0 0 2px #fff',
+                      }}
+                    >
+                      {state.startCountdown}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Invincibility timer (my snake, after respawn) ─────── */}
+            {invincibleSecsLeft > 0 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                <div className="flex items-center gap-2 bg-blue-950/85 text-white text-sm px-4 py-2 rounded-full font-semibold border border-blue-400/60 animate-pulse">
+                  <span>🛡️</span>
+                  <span>無敵保護</span>
+                  <span className="text-blue-300 font-mono font-bold text-base">{invincibleSecsLeft}s</span>
                 </div>
               </div>
             )}

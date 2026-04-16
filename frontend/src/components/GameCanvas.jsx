@@ -78,7 +78,16 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
       if (!snake.body || snake.body.length === 0) continue
       const isMe = snake.playerId === myPlayerId
       const baseColor = snake.color
-      const alpha = snake.alive ? 1 : 0.2
+      const isInvincible = snake.alive && snake.invincibleUntil && snake.invincibleUntil > Date.now()
+      let alpha
+      if (!snake.alive) {
+        alpha = 0.2
+      } else if (isInvincible) {
+        const pulsePhase = (Date.now() % 1200) / 1200
+        alpha = 0.35 + 0.25 * Math.sin(pulsePhase * Math.PI * 2)
+      } else {
+        alpha = 1
+      }
 
       ctx.globalAlpha = alpha
 
@@ -153,6 +162,29 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
         ctx.fillRect(eye1.x - eyeSize / 2, eye1.y - eyeSize / 2, eyeSize, eyeSize)
         ctx.fillRect(eye2.x - eyeSize / 2, eye2.y - eyeSize / 2, eyeSize, eyeSize)
         ctx.globalAlpha = alpha
+      }
+
+      // Invincibility shield glow (blue dashed border on head)
+      if (isInvincible && snake.body.length > 0) {
+        const head = snake.body[0]
+        if (!viewport || (head.x >= camX && head.x < camX + viewport.size && head.y >= camY && head.y < camY + viewport.size)) {
+          const rx = head.x - camX
+          const ry = head.y - camY
+          const shieldPhase = (Date.now() % 800) / 800
+          ctx.globalAlpha = 0.5 + 0.35 * Math.sin(shieldPhase * Math.PI * 2)
+          ctx.save()
+          ctx.shadowColor = '#60a5fa'
+          ctx.shadowBlur = 10
+          ctx.strokeStyle = '#93c5fd'
+          ctx.lineWidth = 2
+          ctx.setLineDash([3, 2])
+          ctx.beginPath()
+          if (ctx.roundRect) ctx.roundRect(rx * tileSize, ry * tileSize, tileSize, tileSize, 6)
+          else ctx.rect(rx * tileSize, ry * tileSize, tileSize, tileSize)
+          ctx.stroke()
+          ctx.setLineDash([])
+          ctx.restore()
+        }
       }
 
       // "ME" indicator — outline on my snake
@@ -296,14 +328,15 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
     draw()
   }, [draw])
 
-  // Continuous animation loop when preview is active (for smooth pulse)
+  // Continuous animation loop when preview is active OR any snake is invincible (for smooth pulse)
+  const hasInvincibleSnake = snakes.some((s) => s.invincibleUntil)
   useEffect(() => {
-    if (!previewSnake) return
+    if (!previewSnake && !hasInvincibleSnake) return
     let rafId
     const animate = () => { draw(); rafId = requestAnimationFrame(animate) }
     rafId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(rafId)
-  }, [previewSnake, draw])
+  }, [previewSnake, hasInvincibleSnake, draw])
 
   return (
     <canvas

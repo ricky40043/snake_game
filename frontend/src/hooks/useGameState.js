@@ -36,6 +36,9 @@ const initialState = {
   // Respawn preview (timed mode — only for myPlayer, 3s before respawn)
   respawnPreview: null, // { body, direction, color } | null
 
+  // Start countdown (3→2→1 before first tick)
+  startCountdown: null,
+
   error: null,
 }
 
@@ -93,7 +96,12 @@ export function useGameState() {
         winnerId: null,
         winnerName: null,
         rankings: [],
+        startCountdown: null,
       }))
+    })
+
+    socket.on('game_countdown', ({ countdown }) => {
+      setState((prev) => ({ ...prev, startCountdown: countdown }))
     })
 
     socket.on('game_paused', () => {
@@ -115,6 +123,7 @@ export function useGameState() {
     socket.on('game_tick', ({ tick, snakes, food, timeLeft, respawning, bullets, attackUnlocked }) => {
       setState((prev) => ({
         ...prev,
+        startCountdown: null,
         tick,
         snakes,
         food,
@@ -163,6 +172,7 @@ export function useGameState() {
         winnerName: null,
         rankings: [],
         respawnPreview: null,
+        startCountdown: null,
       }))
     })
 
@@ -197,6 +207,7 @@ export function useGameState() {
       socket.off('pause_speed_updated')
       socket.off('respawn_preview')
       socket.off('player_respawned')
+      socket.off('game_countdown')
       socket.off('error')
       socket.off('connect_error')
     }
