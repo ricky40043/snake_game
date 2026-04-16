@@ -139,9 +139,11 @@ export default function Game() {
     ? state.respawnPreview.body[0]
     : mySnake?.body?.[0]
   let viewport = null
-  if (isMobile && followMe && myHead) {
-    const camX = Math.max(0, Math.min((state.gridSize || 20) - VIEWPORT_SIZE, myHead.x - Math.floor(VIEWPORT_SIZE / 2)))
-    const camY = Math.max(0, Math.min((state.gridSize || 20) - VIEWPORT_SIZE, myHead.y - Math.floor(VIEWPORT_SIZE / 2)))
+  const currentGridSize = state.gridSize || 20
+  // Only apply viewport when grid is larger than the viewport window; otherwise show full map
+  if (isMobile && followMe && myHead && currentGridSize > VIEWPORT_SIZE) {
+    const camX = Math.max(0, Math.min(currentGridSize - VIEWPORT_SIZE, myHead.x - Math.floor(VIEWPORT_SIZE / 2)))
+    const camY = Math.max(0, Math.min(currentGridSize - VIEWPORT_SIZE, myHead.y - Math.floor(VIEWPORT_SIZE / 2)))
     viewport = { size: VIEWPORT_SIZE, camX, camY }
   }
 
