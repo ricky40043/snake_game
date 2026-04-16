@@ -163,9 +163,10 @@ function registerRoomHandlers(io, socket, socketMap) {
       return socket.emit('error', { code: 'NOT_HOST', message: 'Only host can reset' })
     }
 
-    // Clear game loop if still running
-    if (room.game && room.game.intervalId) {
-      clearInterval(room.game.intervalId)
+    // Clear game loop and countdown timer if still running
+    if (room.game) {
+      if (room.game.countdownTimer) clearTimeout(room.game.countdownTimer)
+      if (room.game.intervalId) clearInterval(room.game.intervalId)
     }
 
     roomService.resetRoom(roomId)

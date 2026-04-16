@@ -242,6 +242,14 @@ function startGame(io, roomId) {
 }
 
 function tick(io, roomId) {
+  try {
+    _tick(io, roomId)
+  } catch (err) {
+    console.error(`[tick error] room=${roomId}:`, err)
+  }
+}
+
+function _tick(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room || !room.game) return
 
