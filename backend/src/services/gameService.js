@@ -599,6 +599,48 @@ function handleDirectionChange(roomId, playerId, direction) {
   snake.nextDirection = dir
 }
 
+// Kill snake as if it died in-game (timed: enters respawn queue; classic: permanent death)
+function killSnakeAsNormalDeath(io, roomId, playerId) {
+  const room = roomService.getRoom(roomId)
+  if (!room || !room.game) return
+  const game = room.game
+  const snake = game.snakes[playerId]
+  if (!snake || !snake.alive) return
+
+  const lengthAtDeath = snake.body.length
+
+  if (game.mode === 'classic') {
+    snake.alive = false
+    game.deathLog.push({ playerId, length: lengthAtDeath, score: snake.score })
+  } else {
+    snake.alive = false
+    snake.lengthAtDeath = lengthAtDeath
+    const deathNow = Date.now()
+    game.respawnQueue[playerId] = deathNow + RESPAWN_DELAY_MS
+    game.previewQueue[playerId] = deathNow + RESPAWN_DELAY_MS - 3000
+  }
+
+  const foodPos = new Set(game.food.map((f) => `${f.x},${f.y}`))
+  const alivePos = new Set()
+  for (const s of Object.values(game.snakes)) {
+    if (s.playerId === playerId || !s.alive) continue
+    for (const seg of s.body) alivePos.add(`${seg.x},${seg.y}`)
+  }
+  for (const seg of snake.body) {
+    const key = `${seg.x},${seg.y}`
+    if (!foodPos.has(key) && !alivePos.has(key)) {
+      game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: playerId, expiresAt: Date.now() + 10000 })
+      foodPos.add(key)
+    }
+  }
+  snake.body = []
+
+  const player = room.players.get(playerId)
+  if (player) player.score = snake.score
+
+  io.to(roomId).emit('player_died', { playerId, name: snake.name })
+}
+
 function killSnakeByDisconnect(roomId, playerId) {
   const room = roomService.getRoom(roomId)
   if (!room || !room.game) return
@@ -797,6 +839,7 @@ module.exports = {
   processShoot,
   handleDirectionChange,
   killSnakeByDisconnect,
+  killSnakeAsNormalDeath,
   pauseGame,
   resumeGame,
   resizeGameMap,

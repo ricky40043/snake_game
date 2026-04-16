@@ -50,6 +50,14 @@ export default function Game() {
     if (state.status === 'lobby') navigate(`/lobby?room=${roomId}`)
   }, [state.status, roomId, navigate])
 
+  // Room not found or game already ended → go home
+  useEffect(() => {
+    const code = state.error?.code
+    if (code === 'ROOM_NOT_FOUND' || code === 'GAME_FINISHED' || code === 'GAME_ALREADY_STARTED') {
+      navigate('/')
+    }
+  }, [state.error, navigate])
+
   // ── Keyboard: direction + space pause ────────────────────────────────────
   const handleKey = useCallback((e) => {
     // Ignore if typing in an input

@@ -7,7 +7,6 @@ const reconnectTimers = require('./reconnectTimers')
 // socketId -> { roomId, playerId }
 const socketMap = new Map()
 
-const PLAYING_RECONNECT_MS = 8000 // grace period before killing snake on disconnect
 
 function registerSocketHandlers(io) {
   io.on('connection', (socket) => {
@@ -28,7 +27,8 @@ function registerSocketHandlers(io) {
         if (room.game?.paused && room.hostId === playerId) {
           gameService.resumeGame(io, roomId)
         }
-        // Give a grace period to reconnect before killing the snake
+        // Treat disconnect as normal in-game death (timed: enters respawn queue)
+        gameService.killSnakeAsNormalDeath(io, roomId, playerId)
         roomService.setPlayerOffline(roomId, playerId)
         io.to(roomId).emit('room_updated', {
           roomId,
@@ -37,30 +37,15 @@ function registerSocketHandlers(io) {
           settings: room.settings,
           hostId: room.hostId,
         })
-        const timerKey = `${roomId}:${playerId}`
-        const timerId = setTimeout(() => {
-          reconnectTimers.delete(timerKey)
-          const currentRoom = roomService.getRoom(roomId)
-          if (!currentRoom || currentRoom.status !== 'playing') return
-          gameService.killSnakeByDisconnect(roomId, playerId)
-          io.to(roomId).emit('room_updated', {
-            roomId,
-            players: roomService.getPublicPlayers(currentRoom),
-            status: currentRoom.status,
-            settings: currentRoom.settings,
-            hostId: currentRoom.hostId,
-          })
-          // Check if game should end (not applicable to timed mode — players can respawn)
-          const game = currentRoom.game
-          if (game && game.mode !== 'timed') {
-            const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
-            const totalPlayers = Object.keys(game.snakes).length
-            if (stillAlive.length === 0 || (stillAlive.length === 1 && totalPlayers > 1)) {
-              gameService.endGame(io, roomId)
-            }
+        // Check if game should end (not applicable to timed mode — players can respawn)
+        const game = room.game
+        if (game && game.mode !== 'timed') {
+          const stillAlive = Object.values(game.snakes).filter((s) => s.alive)
+          const totalPlayers = Object.keys(game.snakes).length
+          if (stillAlive.length === 0 || (stillAlive.length === 1 && totalPlayers > 1)) {
+            gameService.endGame(io, roomId)
           }
-        }, PLAYING_RECONNECT_MS)
-        reconnectTimers.set(timerKey, timerId)
+        }
       } else if (room.status === 'waiting') {
         roomService.setPlayerOffline(roomId, playerId)
         const timerKey = `${roomId}:${playerId}`
