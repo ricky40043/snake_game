@@ -310,7 +310,28 @@ function _tick(io, roomId) {
 
   if (aliveSnakes.length === 0) {
     if (mode === 'classic') { endGame(io, roomId); return }
-    // timed: wait for respawns — just broadcast empty state
+    // timed: wait for respawns — broadcast timeLeft so client continues counting
+    if (mode === 'timed') {
+      const respawning = {}
+      for (const [pid, at] of Object.entries(game.respawnQueue)) {
+        respawning[pid] = Math.max(0, Math.ceil((at - now) / 1000))
+      }
+      io.to(roomId).emit('game_tick', {
+        tick: game.tick,
+        snakes: Object.values(game.snakes).map((s) => ({
+          playerId: s.playerId, body: s.body, color: s.color,
+          name: s.name, alive: s.alive, score: s.score,
+          lengthAtDeath: s.lengthAtDeath || null,
+          invincibleUntil: s.invincibleUntil || null,
+        })),
+        food: game.food,
+        timeLeft: Math.max(0, Math.ceil((game.duration - (now - game.startTime - (game.totalPausedMs || 0))) / 1000)),
+        respawning,
+        bullets: game.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId })),
+        attackUnlocked: false,
+      })
+      return
+    }
   }
 
   // ── Phase 1: Apply buffered direction ─────────────────────────────
@@ -346,7 +367,10 @@ function _tick(io, roomId) {
           if (snake.invincibleUntil && snake.invincibleUntil > now) continue
           if (snake.body.some((seg) => seg.x === bullet.x && seg.y === bullet.y)) {
             const hitSnake = snake
-            if (hitSnake.body.length <= 5) {
+            // NOTE: Phase 2 already unshifted a new head, so body is 1 longer than before this tick.
+            // Threshold <= 6 corresponds to "was <= 5 before this tick", and ensures splice won't
+            // leave body with 0~1 segments which would crash next tick's Phase 2 (body[0] undefined).
+            if (hitSnake.body.length <= 6) {
               // Too short — die
               dead.add(hitSnake.playerId)
             } else {
@@ -449,6 +473,7 @@ function _tick(io, roomId) {
     if (snake.invincibleUntil && snake.invincibleUntil > now) continue  // invincible: immune to body hits
     const head = snake.body[0]
     for (const other of aliveSnakes) {
+      if (dead.has(other.playerId)) continue             // 跳過本 tick 已死亡的蛇（body 尚未清空）
       if (other.invincibleUntil && other.invincibleUntil > now) continue  // can't die by hitting invincible body
       if (other.body.slice(1).some((s) => s.x === head.x && s.y === head.y)) {
         dead.add(snake.playerId)
@@ -678,6 +703,9 @@ function endGame(io, roomId) {
   if (!room || !room.game) return
 
   const game = room.game
+  if (game.ended) return  // 防止同一局被重複結束
+  game.ended = true
+
   if (game.countdownTimer) {
     clearTimeout(game.countdownTimer)
     game.countdownTimer = null
