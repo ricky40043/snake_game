@@ -1,6 +1,21 @@
 ## 最後一次修改（2026-04-26）
 
 ### 改了什麼
+- 修正加速模式扣血邏輯：蛇的長度本身就是生命，改為每 2 秒移除尾巴一節，長度 ≤ 3 格時自動關閉加速
+- 移除獨立 HP 系統（hp/maxHp 欄位）、頂部欄 HP 顯示、「加速耗盡死亡」提示訊息
+
+### 為什麼改
+- 原本錯誤地設計了獨立 HP 計數器，但正確邏輯是蛇長就是生命值，縮短才是代價
+
+### 影響的檔案
+- `backend/src/services/gameService.js` — Phase 1.5 改為 body.pop() 扣尾巴，移除 hp/maxHp 欄位
+- `backend/src/sockets/gameHandlers.js` — toggle_boost 蛇長 ≤ 3 不可啟動
+- `backend/src/sockets/roomHandlers.js` — game_started 同步移除 hp/maxHp
+- `frontend/src/pages/Game.jsx` — 移除 HP 顯示與 boost_exhausted 死亡訊息
+
+## 最後一次修改（2026-04-26）
+
+### 改了什麼
 - 新增加速模式（Boost）：開啟時蛇每個 tick 移動兩格（速度翻倍），每 2 秒扣 1 HP（初始 HP 10），HP 歸零即死
 - 大廳進階設定新增「🚀 加速模式」開關，樣式與攻擊模式開關一致
 - 遊戲中 E 鍵（桌機）或 🚀 按鈕（手機，位於 ⚡ 上方）切換加速開/關
