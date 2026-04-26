@@ -170,6 +170,7 @@ export function useGameState() {
       setState((prev) => ({
         ...prev,
         status: 'finished',
+        paused: false,
         winnerId,
         winnerName,
         rankings,

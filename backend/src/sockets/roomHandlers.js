@@ -65,15 +65,26 @@ function registerRoomHandlers(io, socket, socketMap) {
       hostId: room.hostId,
     })
 
-    // If rejoining during an active game, sync current game state
-    if (isRejoin && room.status === 'playing' && room.game) {
+    // Sync game state on rejoin OR new mid-game join
+    if (room.status === 'playing' && room.game) {
+      if (!isRejoin) gameService.addPlayerToGame(roomId, player.playerId)
       const game = room.game
+      const now = Date.now()
+      let attackUnlocked = game.attackEnabled
+      if (attackUnlocked && game.mode === 'timed' && game.attackUnlockRemaining > 0) {
+        const elapsed = now - game.startTime - (game.totalPausedMs || 0)
+        const remainingSec = Math.max(0, (game.duration - elapsed) / 1000)
+        attackUnlocked = remainingSec <= game.attackUnlockRemaining
+      }
       socket.emit('game_started', {
         gridSize: game.gridSize,
         tickMs: game.tickMs,
         mode: game.mode,
         duration: room.settings.duration,
         paused: game.paused || false,
+        attackEnabled: game.attackEnabled,
+        attackUnlocked,
+        wallDeath: game.wallDeath,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -81,8 +92,10 @@ function registerRoomHandlers(io, socket, socketMap) {
           name: s.name,
           alive: s.alive,
           score: s.score,
+          invincibleUntil: s.invincibleUntil || null,
         })),
         food: game.food,
+        bullets: game.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId })),
       })
       if (game.paused) {
         socket.emit('game_paused', { gridSize: game.gridSize, tickMs: game.tickMs })
@@ -130,12 +143,22 @@ function registerRoomHandlers(io, socket, socketMap) {
 
     if (room.status === 'playing' && room.game) {
       const game = room.game
+      const now = Date.now()
+      let attackUnlocked = game.attackEnabled
+      if (attackUnlocked && game.mode === 'timed' && game.attackUnlockRemaining > 0) {
+        const elapsed = now - game.startTime - (game.totalPausedMs || 0)
+        const remainingSec = Math.max(0, (game.duration - elapsed) / 1000)
+        attackUnlocked = remainingSec <= game.attackUnlockRemaining
+      }
       socket.emit('game_started', {
         gridSize: game.gridSize,
         tickMs: game.tickMs,
         mode: game.mode,
         duration: room.settings.duration,
         paused: game.paused || false,
+        attackEnabled: game.attackEnabled,
+        attackUnlocked,
+        wallDeath: game.wallDeath,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -143,8 +166,10 @@ function registerRoomHandlers(io, socket, socketMap) {
           name: s.name,
           alive: s.alive,
           score: s.score,
+          invincibleUntil: s.invincibleUntil || null,
         })),
         food: game.food,
+        bullets: game.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId })),
       })
       if (game.paused) {
         socket.emit('game_paused', { gridSize: game.gridSize, tickMs: game.tickMs })

@@ -891,6 +891,30 @@ function updatePauseSpeed(io, roomId, newTickMs) {
   io.to(roomId).emit('pause_speed_updated', { tickMs: t })
 }
 
+// ── Spawn a brand-new player into an already-running game ────────────────────
+function addPlayerToGame(roomId, playerId) {
+  const room = roomService.getRoom(roomId)
+  if (!room || !room.game || room.status !== 'playing') return
+  const game = room.game
+  const player = room.players.get(playerId)
+  if (!player || game.snakes[playerId]) return
+
+  const pos = findRespawnPos(game.snakes, game.food, game.gridSize)
+  if (!pos) return
+
+  game.snakes[playerId] = {
+    playerId,
+    body: buildInitialBody(pos.x, pos.y, pos.dir),
+    direction: pos.dir,
+    nextDirection: pos.dir,
+    alive: true,
+    score: 0,
+    color: player.color,
+    name: player.name,
+    invincibleUntil: Date.now() + INVINCIBLE_MS,
+  }
+}
+
 // ── Force end game ────────────────────────────────────────────────────────────
 function endGameNow(io, roomId) {
   const room = roomService.getRoom(roomId)
@@ -906,6 +930,7 @@ function endGameNow(io, roomId) {
 
 module.exports = {
   startGame,
+  addPlayerToGame,
   processShoot,
   handleDirectionChange,
   killSnakeByDisconnect,

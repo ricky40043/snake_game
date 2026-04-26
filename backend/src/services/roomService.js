@@ -82,7 +82,6 @@ function addPlayer(roomId, socketId, name, existingPlayerId = null) {
     return { player, isRejoin: true }
   }
 
-  if (room.status === 'playing') return { error: 'GAME_ALREADY_STARTED' }
   if (room.status === 'finished') return { error: 'GAME_FINISHED' }
   const playerLimit = Math.min(room.settings.maxPlayers || config.defaultMaxPlayers, config.maxPlayersPerRoom)
   if (room.players.size >= playerLimit) return { error: 'ROOM_FULL' }

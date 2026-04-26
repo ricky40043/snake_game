@@ -62,10 +62,10 @@ export default function Game() {
     if (state.status === 'lobby') navigate(`/lobby?room=${roomId}`)
   }, [state.status, roomId, navigate])
 
-  // Room not found or game already ended → go home
+  // Room not found or game finished → go home
   useEffect(() => {
     const code = state.error?.code
-    if (code === 'ROOM_NOT_FOUND' || code === 'GAME_FINISHED' || code === 'GAME_ALREADY_STARTED') {
+    if (code === 'ROOM_NOT_FOUND' || code === 'GAME_FINISHED') {
       navigate('/')
     }
   }, [state.error, navigate])
