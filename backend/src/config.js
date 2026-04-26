@@ -22,4 +22,5 @@ module.exports = {
   attackEnabled: false,         // shooting off by default
   attackUnlockRemaining: 0,     // seconds remaining when attack unlocks (0 = always)
   wallDeath: true,              // wall collision kills snake
+  boostEnabled: false,          // boost (2× speed, costs HP) off by default
 }

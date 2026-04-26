@@ -57,6 +57,7 @@ function createRoom(hostId) {
       attackEnabled: config.attackEnabled,
       attackUnlockRemaining: config.attackUnlockRemaining,
       wallDeath: config.wallDeath,
+      boostEnabled: config.boostEnabled,
     },
     game: null,
     cleanupTimer: null,

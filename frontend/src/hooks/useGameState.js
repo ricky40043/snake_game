@@ -27,6 +27,7 @@ const initialState = {
   attackEnabled: true,
   attackUnlocked: true,
   wallDeath: true,
+  boostEnabled: false,
 
   // Result
   winnerId: null,
@@ -80,7 +81,7 @@ export function useGameState() {
       }))
     })
 
-    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused, attackEnabled, attackUnlockRemaining, attackUnlocked, wallDeath }) => {
+    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused, attackEnabled, attackUnlockRemaining, attackUnlocked, wallDeath, boostEnabled }) => {
       setState((prev) => ({
         ...prev,
         status: 'playing',
@@ -97,6 +98,7 @@ export function useGameState() {
         attackEnabled: attackEnabled !== false,
         attackUnlocked: attackUnlocked !== false,
         wallDeath: wallDeath !== false,
+        boostEnabled: boostEnabled === true,
         winnerId: null,
         winnerName: null,
         rankings: [],

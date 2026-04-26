@@ -386,6 +386,23 @@ export default function Lobby() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Boost mode */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-300">🚀 加速模式</span>
+                      <button
+                        disabled={!state.isHost}
+                        onClick={() => { if (state.isHost) updateSettings('boostEnabled', !settings.boostEnabled) }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:cursor-default
+                          ${settings.boostEnabled ? 'bg-yellow-500' : 'bg-gray-600'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition
+                          ${settings.boostEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600">開啟後可按 E 鍵（手機：🚀）加速，速度翻倍但每 2 秒扣 1 HP</p>
+                  </div>
                 </div>
               )}
             </div>

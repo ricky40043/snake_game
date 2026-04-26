@@ -25,12 +25,13 @@ function formatTime(sec) {
 function getDeathMessage(cause) {
   if (!cause) return null
   switch (cause.type) {
-    case 'wall':           return { emoji: '💥', pre: null,  name: null,             post: '你撞牆了' }
-    case 'self':           return { emoji: '🐍', pre: null,  name: null,             post: '你咬到自己了' }
-    case 'head_collision': return { emoji: '💥', pre: '你和', name: cause.killerName, post: '正面相撞' }
-    case 'body':           return { emoji: '💀', pre: '你撞上了', name: cause.killerName, post: '的身體' }
-    case 'bullet':         return { emoji: '🔫', pre: '你被', name: cause.killerName, post: '射殺' }
-    default:               return { emoji: '💀', pre: null,  name: null,             post: '你死了' }
+    case 'wall':            return { emoji: '💥', pre: null,  name: null,             post: '你撞牆了' }
+    case 'self':            return { emoji: '🐍', pre: null,  name: null,             post: '你咬到自己了' }
+    case 'head_collision':  return { emoji: '💥', pre: '你和', name: cause.killerName, post: '正面相撞' }
+    case 'body':            return { emoji: '💀', pre: '你撞上了', name: cause.killerName, post: '的身體' }
+    case 'bullet':          return { emoji: '🔫', pre: '你被', name: cause.killerName, post: '射殺' }
+    case 'boost_exhausted': return { emoji: '💨', pre: null,  name: null,             post: '加速耗盡，你死了' }
+    default:                return { emoji: '💀', pre: null,  name: null,             post: '你死了' }
   }
 }
 
@@ -95,6 +96,13 @@ export default function Game() {
       return
     }
 
+    // E key: toggle boost
+    if (e.key === 'e' || e.key === 'E') {
+      e.preventDefault()
+      if (state.status === 'playing' && !state.paused && state.boostEnabled) socket.emit('toggle_boost', { roomId })
+      return
+    }
+
     // Direction keys
     const dir = DIR_MAP[e.key]
     if (!dir) return
@@ -103,7 +111,7 @@ export default function Game() {
     if (dir === lastDirRef.current) return
     lastDirRef.current = dir
     socket.emit('change_direction', { roomId, direction: dir })
-  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown])
+  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown, state.boostEnabled, state.attackUnlocked])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -119,6 +127,10 @@ export default function Game() {
 
   function sendShoot() {
     if (state.status === 'playing' && !state.paused && state.attackUnlocked) socket.emit('shoot', { roomId })
+  }
+
+  function sendBoost() {
+    if (state.status === 'playing' && !state.paused && state.boostEnabled) socket.emit('toggle_boost', { roomId })
   }
 
   const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
@@ -230,7 +242,10 @@ export default function Game() {
             {isTimed ? '⏱ 計時' : '🏆 存活'}
           </span>
           {state.status === 'playing' && !state.paused && state.attackUnlocked && (
-            <span className="text-xs text-gray-600 hidden sm:inline">F 鍵攻擊</span>
+            <span className="text-xs text-gray-600 hidden sm:inline">F 攻擊</span>
+          )}
+          {state.status === 'playing' && !state.paused && state.boostEnabled && (
+            <span className="text-xs text-gray-600 hidden sm:inline">E 加速</span>
           )}
           {state.status === 'playing' && !state.attackUnlocked && state.settings?.attackEnabled !== false && (
             <span className="text-xs text-red-400/70 bg-red-900/20 px-2 py-0.5 rounded-full hidden sm:inline animate-pulse">
@@ -278,6 +293,11 @@ export default function Game() {
             </span>
           )}
           <span className="text-gray-500">存活 {alivePlayers.length}</span>
+          {mySnake && state.boostEnabled && mySnake.hp != null && (
+            <span className={`flex items-center gap-0.5 font-mono text-xs ${mySnake.hp <= 3 ? 'text-red-400 animate-pulse' : 'text-pink-400'}`}>
+              ❤️{mySnake.hp}
+            </span>
+          )}
           {mySnake && (
             <span className="flex items-center gap-1.5">
               <span
@@ -528,15 +548,27 @@ export default function Game() {
                 className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">→</button>
             </div>
           </div>
-          {/* Attack button — aligned to bottom row */}
-          <button onPointerDown={sendShoot}
-            className={`w-14 h-14 rounded-xl text-2xl flex items-center justify-center border-2 transition ${
-              state.attackUnlocked
-                ? 'bg-red-700 active:bg-red-600 border-red-500'
-                : 'bg-gray-700 border-gray-600 opacity-40'
-            }`}>
-            ⚡
-          </button>
+          {/* Boost + Attack column — aligned to bottom of d-pad */}
+          <div className="flex flex-col gap-2 items-center">
+            {state.boostEnabled && (
+              <button onPointerDown={sendBoost}
+                className={`w-14 h-14 rounded-xl text-2xl flex items-center justify-center border-2 transition ${
+                  mySnake?.boostActive
+                    ? 'bg-yellow-500 active:bg-yellow-400 border-yellow-300'
+                    : 'bg-[#21262d] active:bg-[#30363d] border-gray-600'
+                }`}>
+                🚀
+              </button>
+            )}
+            <button onPointerDown={sendShoot}
+              className={`w-14 h-14 rounded-xl text-2xl flex items-center justify-center border-2 transition ${
+                state.attackUnlocked
+                  ? 'bg-red-700 active:bg-red-600 border-red-500'
+                  : 'bg-gray-700 border-gray-600 opacity-40'
+              }`}>
+              ⚡
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -156,7 +156,7 @@ function startGame(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room) return
 
-  const { gridSize, tickMs, mode, duration, foodCount, attackEnabled, attackUnlockRemaining, wallDeath } = room.settings
+  const { gridSize, tickMs, mode, duration, foodCount, attackEnabled, attackUnlockRemaining, wallDeath, boostEnabled } = room.settings
   const alivePlayers = [...room.players.values()].filter((p) => p.isOnline)
   const spawnConfigs = getSpawnConfigs(gridSize)
 
@@ -172,6 +172,10 @@ function startGame(io, roomId) {
       score: 0,
       color: player.color,
       name: player.name,
+      hp: 10,
+      maxHp: 10,
+      boostActive: false,
+      lastHpDeductAt: 0,
     }
   })
 
@@ -204,6 +208,7 @@ function startGame(io, roomId) {
     attackEnabled: attackEnabled !== false,
     attackUnlockRemaining: attackUnlockRemaining || 0,
     wallDeath: wallDeath !== false,
+    boostEnabled: boostEnabled === true,
     lastKilledBy: {},    // victimId → killerId (for revenge detection)
   }
   room.status = 'playing'
@@ -216,13 +221,18 @@ function startGame(io, roomId) {
     tickMs,
     mode: room.game.mode,
     duration: room.settings.duration,
-    snakes: Object.values(snakes),
+    snakes: Object.values(snakes).map((s) => ({
+      playerId: s.playerId, body: s.body, color: s.color, name: s.name,
+      alive: s.alive, score: s.score, invincibleUntil: s.invincibleUntil || null,
+      hp: s.hp, maxHp: s.maxHp, boostActive: s.boostActive,
+    })),
     food,
     paused: false,
     attackEnabled: room.game.attackEnabled,
     attackUnlockRemaining: room.game.attackUnlockRemaining,
     attackUnlocked: attackUnlockedNow,
     wallDeath: room.game.wallDeath,
+    boostEnabled: room.game.boostEnabled,
   })
 
   // Countdown START_COUNTDOWN_SEC → 1, then start ticking
@@ -324,6 +334,7 @@ function _tick(io, roomId) {
           name: s.name, alive: s.alive, score: s.score,
           lengthAtDeath: s.lengthAtDeath || null,
           invincibleUntil: s.invincibleUntil || null,
+          hp: s.hp ?? null, maxHp: s.maxHp ?? null, boostActive: s.boostActive ?? false,
         })),
         food: game.food,
         timeLeft: Math.max(0, Math.ceil((game.duration - (now - game.startTime - (game.totalPausedMs || 0))) / 1000)),
@@ -335,6 +346,9 @@ function _tick(io, roomId) {
     }
   }
 
+  const dead = new Set()
+  const deadCauses = new Map() // playerId → { type, killerId?, killerName? }
+
   // ── Phase 1: Apply buffered direction ─────────────────────────────
   for (const snake of aliveSnakes) {
     if (snake.nextDirection && OPPOSITE[snake.direction] !== snake.nextDirection) {
@@ -342,15 +356,84 @@ function _tick(io, roomId) {
     }
   }
 
+  // ── Phase 1.5: Boost extra move + HP deduction ────────────────────
+  if (game.boostEnabled) {
+    for (const snake of aliveSnakes) {
+      if (!snake.boostActive || dead.has(snake.playerId)) continue
+
+      // Auto-deactivate if snake is too short
+      if (snake.body.length <= 3) {
+        snake.boostActive = false
+        continue
+      }
+
+      // HP deduction every 2 seconds while boosting
+      if (snake.lastHpDeductAt === 0) snake.lastHpDeductAt = now
+      if (now - snake.lastHpDeductAt >= 2000) {
+        snake.hp = (snake.hp || 0) - 1
+        snake.lastHpDeductAt = now
+        if (snake.hp <= 0) {
+          dead.add(snake.playerId)
+          deadCauses.set(snake.playerId, { type: 'boost_exhausted' })
+          continue
+        }
+      }
+
+      // Extra head extension
+      const d = DIR_DELTA[snake.direction]
+      snake.body.unshift({ x: snake.body[0].x + d.dx, y: snake.body[0].y + d.dy })
+      const h = snake.body[0]
+
+      // Wall check for extra move
+      if (h.x < 0 || h.x >= gridSize || h.y < 0 || h.y >= gridSize) {
+        if (game.wallDeath) {
+          dead.add(snake.playerId)
+          if (!deadCauses.has(snake.playerId)) deadCauses.set(snake.playerId, { type: 'wall' })
+        } else {
+          snake.body.shift()
+          const neck = snake.body[0]
+          const perps = getPerpendicularDirs(snake.direction)
+          if (Math.random() < 0.5) perps.reverse()
+          let bounced = false
+          for (const newDir of perps) {
+            const d2 = DIR_DELTA[newDir]
+            const nx = neck.x + d2.dx
+            const ny = neck.y + d2.dy
+            if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+              snake.body.unshift({ x: nx, y: ny })
+              snake.direction = newDir
+              snake.nextDirection = newDir
+              bounced = true
+              break
+            }
+          }
+          if (!bounced) {
+            dead.add(snake.playerId)
+            if (!deadCauses.has(snake.playerId)) deadCauses.set(snake.playerId, { type: 'wall' })
+          }
+        }
+        continue
+      }
+
+      // Food check for extra move — consume immediately
+      const bfi = game.food.findIndex(f => f.x === h.x && f.y === h.y)
+      if (bfi >= 0) {
+        snake.score += 10
+        game.food.splice(bfi, 1)
+      } else {
+        snake.body.pop()
+      }
+    }
+  }
+
   // ── Phase 2: Extend heads ─────────────────────────────────────────
   for (const snake of aliveSnakes) {
+    if (dead.has(snake.playerId)) continue  // skip snakes that died in Phase 1.5
     const d = DIR_DELTA[snake.direction]
     snake.body.unshift({ x: snake.body[0].x + d.dx, y: snake.body[0].y + d.dy })
   }
 
   // ── Phase 2.5: Move bullets ───────────────────────────────────────
-  const dead = new Set()
-  const deadCauses = new Map() // playerId → { type, killerId?, killerName? }
 
   if (game.bullets.length > 0) {
     const bulletsToKeep = []
@@ -428,6 +511,7 @@ function _tick(io, roomId) {
   // ── Phase 3: Collision detection ──────────────────────────────────
   // Wall
   for (const snake of aliveSnakes) {
+    if (dead.has(snake.playerId)) continue
     const h = snake.body[0]
     if (h.x < 0 || h.x >= gridSize || h.y < 0 || h.y >= gridSize) {
       if (game.wallDeath) {
@@ -600,6 +684,9 @@ function _tick(io, roomId) {
       score: s.score,
       lengthAtDeath: s.lengthAtDeath || null,
       invincibleUntil: s.invincibleUntil || null,
+      hp: s.hp ?? null,
+      maxHp: s.maxHp ?? null,
+      boostActive: s.boostActive ?? false,
     })),
     food: game.food,
   }
@@ -654,6 +741,9 @@ function respawnPlayer(game, playerId) {
   snake.nextDirection = pos.dir
   snake.alive = true
   snake.invincibleUntil = Date.now() + INVINCIBLE_MS
+  snake.hp = snake.maxHp || 10
+  snake.boostActive = false
+  snake.lastHpDeductAt = 0
 }
 
 function handleDirectionChange(roomId, playerId, direction) {
@@ -840,6 +930,10 @@ function resumeGame(io, roomId) {
   game.paused = false
   game.totalPausedMs = (game.totalPausedMs || 0) + (Date.now() - game.pausedAt)
   game.pausedAt = null
+  // Reset boost HP timers so pause time doesn't cost HP
+  for (const snake of Object.values(game.snakes)) {
+    if (snake.boostActive) snake.lastHpDeductAt = Date.now()
+  }
   // Only start tick if countdown is already done
   if (!game.countdownTimer) {
     game.intervalId = setInterval(() => tick(io, roomId), game.tickMs)
@@ -913,6 +1007,10 @@ function addPlayerToGame(roomId, playerId) {
     color: player.color,
     name: player.name,
     invincibleUntil: Date.now() + INVINCIBLE_MS,
+    hp: 10,
+    maxHp: 10,
+    boostActive: false,
+    lastHpDeductAt: 0,
   }
 }
 

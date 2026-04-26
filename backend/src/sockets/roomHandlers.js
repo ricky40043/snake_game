@@ -85,6 +85,7 @@ function registerRoomHandlers(io, socket, socketMap) {
         attackEnabled: game.attackEnabled,
         attackUnlocked,
         wallDeath: game.wallDeath,
+        boostEnabled: game.boostEnabled,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -93,6 +94,9 @@ function registerRoomHandlers(io, socket, socketMap) {
           alive: s.alive,
           score: s.score,
           invincibleUntil: s.invincibleUntil || null,
+          hp: s.hp ?? null,
+          maxHp: s.maxHp ?? null,
+          boostActive: s.boostActive ?? false,
         })),
         food: game.food,
         bullets: game.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId })),
@@ -159,6 +163,7 @@ function registerRoomHandlers(io, socket, socketMap) {
         attackEnabled: game.attackEnabled,
         attackUnlocked,
         wallDeath: game.wallDeath,
+        boostEnabled: game.boostEnabled,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -167,6 +172,9 @@ function registerRoomHandlers(io, socket, socketMap) {
           alive: s.alive,
           score: s.score,
           invincibleUntil: s.invincibleUntil || null,
+          hp: s.hp ?? null,
+          maxHp: s.maxHp ?? null,
+          boostActive: s.boostActive ?? false,
         })),
         food: game.food,
         bullets: game.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y, dx: b.dx, dy: b.dy, color: b.color, playerId: b.playerId })),
@@ -228,6 +236,7 @@ function registerRoomHandlers(io, socket, socketMap) {
     const unlockRem = Math.round(Number(settings.attackUnlockRemaining))
     if (!isNaN(unlockRem) && unlockRem >= 0 && unlockRem <= 300) room.settings.attackUnlockRemaining = unlockRem
     if (typeof settings.wallDeath === 'boolean') room.settings.wallDeath = settings.wallDeath
+    if (typeof settings.boostEnabled === 'boolean') room.settings.boostEnabled = settings.boostEnabled
 
     const mp = Math.round(Number(settings.maxPlayers))
     if (!isNaN(mp) && mp >= 2 && mp <= config.maxPlayersPerRoom) {

@@ -78,6 +78,20 @@ function registerGameHandlers(io, socket, socketMap) {
     if (!room || room.hostId !== info.playerId) return
     gameService.endGameNow(io, roomId)
   })
+
+  // ── Toggle boost (player) ─────────────────────────────────────────────────
+  socket.on('toggle_boost', ({ roomId } = {}) => {
+    const info = socketMap.get(socket.id)
+    if (!info) return
+    const room = roomService.getRoom(roomId || info.roomId)
+    if (!room?.game || room.status !== 'playing' || room.game.paused) return
+    if (!room.game.boostEnabled) return
+    const snake = room.game.snakes[info.playerId]
+    if (!snake || !snake.alive) return
+    if (!snake.boostActive && snake.body.length <= 3) return // too short to boost
+    snake.boostActive = !snake.boostActive
+    if (snake.boostActive) snake.lastHpDeductAt = Date.now()
+  })
 }
 
 module.exports = registerGameHandlers

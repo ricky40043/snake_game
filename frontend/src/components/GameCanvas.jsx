@@ -187,6 +187,29 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
         }
       }
 
+      // Boost glow (yellow pulsing border on head)
+      if (snake.alive && snake.boostActive && snake.body.length > 0) {
+        const head = snake.body[0]
+        if (!viewport || (head.x >= camX && head.x < camX + viewport.size && head.y >= camY && head.y < camY + viewport.size)) {
+          const rx = head.x - camX
+          const ry = head.y - camY
+          const boostPhase = (Date.now() % 500) / 500
+          ctx.globalAlpha = 0.55 + 0.3 * Math.sin(boostPhase * Math.PI * 2)
+          ctx.save()
+          ctx.shadowColor = '#fbbf24'
+          ctx.shadowBlur = 12
+          ctx.strokeStyle = '#fde68a'
+          ctx.lineWidth = 2
+          ctx.setLineDash([2, 2])
+          ctx.beginPath()
+          if (ctx.roundRect) ctx.roundRect(rx * tileSize, ry * tileSize, tileSize, tileSize, 6)
+          else ctx.rect(rx * tileSize, ry * tileSize, tileSize, tileSize)
+          ctx.stroke()
+          ctx.setLineDash([])
+          ctx.restore()
+        }
+      }
+
       // "ME" indicator — outline on my snake
       if (isMe && snake.alive) {
         const head = snake.body[0]
@@ -328,15 +351,16 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
     draw()
   }, [draw])
 
-  // Continuous animation loop when preview is active OR any snake is invincible (for smooth pulse)
+  // Continuous animation loop when preview/invincible/boosting snakes need smooth pulse
   const hasInvincibleSnake = snakes.some((s) => s.invincibleUntil)
+  const hasBoostingSnake = snakes.some((s) => s.boostActive)
   useEffect(() => {
-    if (!previewSnake && !hasInvincibleSnake) return
+    if (!previewSnake && !hasInvincibleSnake && !hasBoostingSnake) return
     let rafId
     const animate = () => { draw(); rafId = requestAnimationFrame(animate) }
     rafId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(rafId)
-  }, [previewSnake, hasInvincibleSnake, draw])
+  }, [previewSnake, hasInvincibleSnake, hasBoostingSnake, draw])
 
   return (
     <canvas
