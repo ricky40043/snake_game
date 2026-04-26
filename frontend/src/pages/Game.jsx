@@ -22,6 +22,18 @@ function formatTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+function getDeathMessage(cause) {
+  if (!cause) return null
+  switch (cause.type) {
+    case 'wall':           return { emoji: '💥', pre: null,  name: null,             post: '你撞牆了' }
+    case 'self':           return { emoji: '🐍', pre: null,  name: null,             post: '你咬到自己了' }
+    case 'head_collision': return { emoji: '💥', pre: '你和', name: cause.killerName, post: '正面相撞' }
+    case 'body':           return { emoji: '💀', pre: '你撞上了', name: cause.killerName, post: '的身體' }
+    case 'bullet':         return { emoji: '🔫', pre: '你被', name: cause.killerName, post: '射殺' }
+    default:               return { emoji: '💀', pre: null,  name: null,             post: '你死了' }
+  }
+}
+
 export default function Game() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -120,6 +132,28 @@ export default function Game() {
     }
     prevIsAliveRef.current = isAlive
   }, [isAlive])
+  // ── Death / revenge kill toasts ──────────────────────────────────────────
+  const [deathMsg, setDeathMsg] = useState(null)
+  const [revengeMsg, setRevengeMsg] = useState(null)
+  const deathTimerRef = useRef(null)
+  const revengeTimerRef = useRef(null)
+
+  useEffect(() => {
+    if (!state.deathCause) return
+    const msg = getDeathMessage(state.deathCause)
+    if (!msg) return
+    clearTimeout(deathTimerRef.current)
+    setDeathMsg(msg)
+    deathTimerRef.current = setTimeout(() => setDeathMsg(null), 3500)
+  }, [state.deathCause])
+
+  useEffect(() => {
+    if (!state.revengeKill) return
+    clearTimeout(revengeTimerRef.current)
+    setRevengeMsg(state.revengeKill.victimName)
+    revengeTimerRef.current = setTimeout(() => setRevengeMsg(null), 3500)
+  }, [state.revengeKill])
+
   const isTimed = state.mode === 'timed'
   const isRespawning = isTimed && !isAlive && state.respawning?.[state.myPlayerId] !== undefined
   const respawnCountdown = isRespawning ? (state.respawning[state.myPlayerId] ?? 0) : 0
@@ -165,6 +199,13 @@ export default function Game() {
   return (
     <div className="flex flex-col h-dvh bg-[#0d1117] select-none">
       <style>{`
+        @keyframes toast-in {
+          0%   { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.9); }
+          100% { opacity: 1; transform: translateX(-50%) translateY(0)      scale(1); }
+        }
+        .toast-enter {
+          animation: toast-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
         @keyframes countdown-pop {
           0%   { transform: scale(2.2); opacity: 1; filter: brightness(2) blur(0px); }
           40%  { transform: scale(1);   opacity: 0.95; filter: brightness(1.2) blur(0px); }
@@ -373,6 +414,32 @@ export default function Game() {
                   <span>🛡️</span>
                   <span>無敵保護</span>
                   <span className="text-blue-300 font-mono font-bold text-base">{invincibleSecsLeft}s</span>
+                </div>
+              </div>
+            )}
+
+            {/* ── Death cause toast ──────────────────────────────── */}
+            {deathMsg && (
+              <div key={state.deathCause?.type + (state.deathCause?.killerName || '')} className="toast-enter absolute top-3 left-1/2 z-30 pointer-events-none" style={{ transform: 'translateX(-50%)' }}>
+                <div className="flex items-center gap-2 bg-black/90 text-white text-sm px-4 py-2 rounded-xl border border-red-500/50 shadow-xl whitespace-nowrap">
+                  <span className="text-lg leading-none">{deathMsg.emoji}</span>
+                  <span className="font-semibold">
+                    {deathMsg.pre && <span>{deathMsg.pre} </span>}
+                    {deathMsg.name && <span className="text-yellow-300 font-bold">{deathMsg.name} </span>}
+                    <span>{deathMsg.post}</span>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* ── Revenge kill toast ─────────────────────────────── */}
+            {revengeMsg && (
+              <div key={revengeMsg} className="toast-enter absolute top-3 left-1/2 z-30 pointer-events-none" style={{ transform: 'translateX(-50%)' }}>
+                <div className="flex items-center gap-2 bg-black/90 text-sm px-4 py-2 rounded-xl border border-yellow-400/70 shadow-xl whitespace-nowrap">
+                  <span className="text-lg leading-none">⚔️</span>
+                  <span className="font-semibold text-yellow-300">
+                    反殺成功！幹掉了 <span className="text-red-400 font-bold">{revengeMsg}</span>
+                  </span>
                 </div>
               </div>
             )}

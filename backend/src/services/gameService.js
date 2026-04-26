@@ -204,6 +204,7 @@ function startGame(io, roomId) {
     attackEnabled: attackEnabled !== false,
     attackUnlockRemaining: attackUnlockRemaining || 0,
     wallDeath: wallDeath !== false,
+    lastKilledBy: {},    // victimId → killerId (for revenge detection)
   }
   room.status = 'playing'
 
@@ -349,6 +350,7 @@ function _tick(io, roomId) {
 
   // ── Phase 2.5: Move bullets ───────────────────────────────────────
   const dead = new Set()
+  const deadCauses = new Map() // playerId → { type, killerId?, killerName? }
 
   if (game.bullets.length > 0) {
     const bulletsToKeep = []
@@ -373,6 +375,9 @@ function _tick(io, roomId) {
             if (hitSnake.body.length <= 6) {
               // Too short — die
               dead.add(hitSnake.playerId)
+              if (!deadCauses.has(hitSnake.playerId)) {
+                deadCauses.set(hitSnake.playerId, { type: 'bullet', killerId: bullet.playerId, killerName: game.snakes[bullet.playerId]?.name || '?' })
+              }
             } else {
               // Remove 5 tail segments, convert to corpse food
               const removedSegs = hitSnake.body.splice(hitSnake.body.length - 5, 5)
@@ -412,6 +417,9 @@ function _tick(io, roomId) {
       if (other.playerId === snake.playerId || dead.has(other.playerId)) continue
       if (other.body.some((seg) => seg.x === head.x && seg.y === head.y)) {
         dead.add(snake.playerId)
+        if (!deadCauses.has(snake.playerId)) {
+          deadCauses.set(snake.playerId, { type: 'body', killerId: other.playerId, killerName: other.name })
+        }
         break
       }
     }
@@ -424,6 +432,9 @@ function _tick(io, roomId) {
     if (h.x < 0 || h.x >= gridSize || h.y < 0 || h.y >= gridSize) {
       if (game.wallDeath) {
         dead.add(snake.playerId)
+        if (!deadCauses.has(snake.playerId)) {
+          deadCauses.set(snake.playerId, { type: 'wall' })
+        }
       } else {
         // Bounce: undo out-of-bounds move, redirect randomly
         snake.body.shift() // remove out-of-bounds head
@@ -443,7 +454,12 @@ function _tick(io, roomId) {
             break
           }
         }
-        if (!bounced) dead.add(snake.playerId) // corner with no valid direction
+        if (!bounced) {
+          dead.add(snake.playerId)
+          if (!deadCauses.has(snake.playerId)) {
+            deadCauses.set(snake.playerId, { type: 'wall' })
+          }
+        }
       }
     }
   }
@@ -463,7 +479,16 @@ function _tick(io, roomId) {
         const s = game.snakes[id]
         return s && s.invincibleUntil && s.invincibleUntil > now
       })
-      if (!anyInvincible) ids.forEach((id) => dead.add(id))
+      if (!anyInvincible) {
+        ids.forEach((id) => {
+          dead.add(id)
+          if (!deadCauses.has(id)) {
+            const otherId = ids.find((oid) => oid !== id)
+            const other = otherId ? game.snakes[otherId] : null
+            deadCauses.set(id, { type: 'head_collision', killerId: otherId || null, killerName: other?.name || '?' })
+          }
+        })
+      }
     }
   }
 
@@ -477,6 +502,11 @@ function _tick(io, roomId) {
       if (other.invincibleUntil && other.invincibleUntil > now) continue  // can't die by hitting invincible body
       if (other.body.slice(1).some((s) => s.x === head.x && s.y === head.y)) {
         dead.add(snake.playerId)
+        if (!deadCauses.has(snake.playerId)) {
+          deadCauses.set(snake.playerId, other.playerId === snake.playerId
+            ? { type: 'self' }
+            : { type: 'body', killerId: other.playerId, killerName: other.name })
+        }
         break
       }
     }
@@ -529,7 +559,19 @@ function _tick(io, roomId) {
     const player = room.players.get(id)
     if (player) player.score = snake.score
 
-    io.to(roomId).emit('player_died', { playerId: id, name: snake.name })
+    const cause = deadCauses.get(id) || { type: 'unknown' }
+    io.to(roomId).emit('player_died', { playerId: id, name: snake.name, deathCause: cause })
+
+    // Revenge kill tracking: if killer previously died to this player, notify them
+    if (cause.killerId && cause.killerId !== id) {
+      game.lastKilledBy[id] = cause.killerId
+      if (game.lastKilledBy[cause.killerId] === id) {
+        const killerPlayer = room.players.get(cause.killerId)
+        if (killerPlayer?.socketId) {
+          io.to(killerPlayer.socketId).emit('revenge_kill', { victimName: snake.name })
+        }
+      }
+    }
   }
 
   // ── Phase 6: Respawn food ─────────────────────────────────────────

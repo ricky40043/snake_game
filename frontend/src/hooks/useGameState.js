@@ -39,6 +39,10 @@ const initialState = {
   // Start countdown (3→2→1 before first tick)
   startCountdown: null,
 
+  // Death notifications
+  deathCause: null,   // { type, killerId?, killerName? } | null
+  revengeKill: null,  // { victimName } | null
+
   error: null,
 }
 
@@ -97,6 +101,8 @@ export function useGameState() {
         winnerName: null,
         rankings: [],
         startCountdown: null,
+        deathCause: null,
+        revengeKill: null,
       }))
     })
 
@@ -142,10 +148,21 @@ export function useGameState() {
       })
     })
 
+    socket.on('player_died', ({ playerId, deathCause }) => {
+      setState((prev) => {
+        if (playerId !== prev.myPlayerId) return prev
+        return { ...prev, deathCause: deathCause || null }
+      })
+    })
+
+    socket.on('revenge_kill', ({ victimName }) => {
+      setState((prev) => ({ ...prev, revengeKill: { victimName, ts: Date.now() } }))
+    })
+
     socket.on('player_respawned', ({ playerId }) => {
       setState((prev) => ({
         ...prev,
-        ...(prev.myPlayerId === playerId ? { respawnPreview: null } : {}),
+        ...(prev.myPlayerId === playerId ? { respawnPreview: null, deathCause: null } : {}),
       }))
     })
 
@@ -173,6 +190,8 @@ export function useGameState() {
         rankings: [],
         respawnPreview: null,
         startCountdown: null,
+        deathCause: null,
+        revengeKill: null,
       }))
     })
 
@@ -207,6 +226,8 @@ export function useGameState() {
       socket.off('pause_speed_updated')
       socket.off('respawn_preview')
       socket.off('player_respawned')
+      socket.off('player_died')
+      socket.off('revenge_kill')
       socket.off('game_countdown')
       socket.off('error')
       socket.off('connect_error')
