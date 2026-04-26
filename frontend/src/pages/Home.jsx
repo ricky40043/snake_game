@@ -39,6 +39,9 @@ export default function Home() {
     if (state.status === 'lobby' && state.roomId) {
       setLoading(null)
       navigate(`/lobby?room=${state.roomId}`)
+    } else if (state.status === 'playing' && state.roomId) {
+      setLoading(null)
+      navigate(`/game?room=${state.roomId}`)
     }
   }, [state.status, state.roomId, navigate])
 
