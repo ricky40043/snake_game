@@ -548,6 +548,7 @@ function _tick(io, roomId) {
       for (const seg of s.body) alivePos.add(`${seg.x},${seg.y}`)
     }
     for (const seg of snake.body) {
+      if (seg.x < 0 || seg.x >= gridSize || seg.y < 0 || seg.y >= gridSize) continue
       const key = `${seg.x},${seg.y}`
       if (!foodPos.has(key) && !alivePos.has(key)) {
         game.food.push({ x: seg.x, y: seg.y, type: 'corpse', ownerId: id, expiresAt: Date.now() + 10000 })
