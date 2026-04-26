@@ -172,8 +172,6 @@ function startGame(io, roomId) {
       score: 0,
       color: player.color,
       name: player.name,
-      hp: 10,
-      maxHp: 10,
       boostActive: false,
       lastHpDeductAt: 0,
     }
@@ -224,7 +222,7 @@ function startGame(io, roomId) {
     snakes: Object.values(snakes).map((s) => ({
       playerId: s.playerId, body: s.body, color: s.color, name: s.name,
       alive: s.alive, score: s.score, invincibleUntil: s.invincibleUntil || null,
-      hp: s.hp, maxHp: s.maxHp, boostActive: s.boostActive,
+      boostActive: s.boostActive,
     })),
     food,
     paused: false,
@@ -334,7 +332,7 @@ function _tick(io, roomId) {
           name: s.name, alive: s.alive, score: s.score,
           lengthAtDeath: s.lengthAtDeath || null,
           invincibleUntil: s.invincibleUntil || null,
-          hp: s.hp ?? null, maxHp: s.maxHp ?? null, boostActive: s.boostActive ?? false,
+          boostActive: s.boostActive ?? false,
         })),
         food: game.food,
         timeLeft: Math.max(0, Math.ceil((game.duration - (now - game.startTime - (game.totalPausedMs || 0))) / 1000)),
@@ -367,14 +365,13 @@ function _tick(io, roomId) {
         continue
       }
 
-      // HP deduction every 2 seconds while boosting
+      // Cost: lose 1 tail segment every 2 seconds while boosting
       if (snake.lastHpDeductAt === 0) snake.lastHpDeductAt = now
       if (now - snake.lastHpDeductAt >= 2000) {
-        snake.hp = (snake.hp || 0) - 1
         snake.lastHpDeductAt = now
-        if (snake.hp <= 0) {
-          dead.add(snake.playerId)
-          deadCauses.set(snake.playerId, { type: 'boost_exhausted' })
+        snake.body.pop()
+        if (snake.body.length <= 3) {
+          snake.boostActive = false
           continue
         }
       }
@@ -684,8 +681,6 @@ function _tick(io, roomId) {
       score: s.score,
       lengthAtDeath: s.lengthAtDeath || null,
       invincibleUntil: s.invincibleUntil || null,
-      hp: s.hp ?? null,
-      maxHp: s.maxHp ?? null,
       boostActive: s.boostActive ?? false,
     })),
     food: game.food,
@@ -741,7 +736,6 @@ function respawnPlayer(game, playerId) {
   snake.nextDirection = pos.dir
   snake.alive = true
   snake.invincibleUntil = Date.now() + INVINCIBLE_MS
-  snake.hp = snake.maxHp || 10
   snake.boostActive = false
   snake.lastHpDeductAt = 0
 }
@@ -1007,8 +1001,6 @@ function addPlayerToGame(roomId, playerId) {
     color: player.color,
     name: player.name,
     invincibleUntil: Date.now() + INVINCIBLE_MS,
-    hp: 10,
-    maxHp: 10,
     boostActive: false,
     lastHpDeductAt: 0,
   }

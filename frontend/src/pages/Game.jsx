@@ -30,7 +30,6 @@ function getDeathMessage(cause) {
     case 'head_collision':  return { emoji: '💥', pre: '你和', name: cause.killerName, post: '正面相撞' }
     case 'body':            return { emoji: '💀', pre: '你撞上了', name: cause.killerName, post: '的身體' }
     case 'bullet':          return { emoji: '🔫', pre: '你被', name: cause.killerName, post: '射殺' }
-    case 'boost_exhausted': return { emoji: '💨', pre: null,  name: null,             post: '加速耗盡，你死了' }
     default:                return { emoji: '💀', pre: null,  name: null,             post: '你死了' }
   }
 }
@@ -293,11 +292,6 @@ export default function Game() {
             </span>
           )}
           <span className="text-gray-500">存活 {alivePlayers.length}</span>
-          {mySnake && state.boostEnabled && mySnake.hp != null && (
-            <span className={`flex items-center gap-0.5 font-mono text-xs ${mySnake.hp <= 3 ? 'text-red-400 animate-pulse' : 'text-pink-400'}`}>
-              ❤️{mySnake.hp}
-            </span>
-          )}
           {mySnake && (
             <span className="flex items-center gap-1.5">
               <span
