@@ -14,7 +14,7 @@ const RESPAWN_SAFE_RADIUS = 6
 const INVINCIBLE_MS = 5000
 const START_COUNTDOWN_SEC = 3
 const BULLET_DAMAGE_SEGMENTS = 3
-const TUTORIAL_STEP_COUNT = 8
+const TUTORIAL_STEP_COUNT = 9
 
 function getSpawnConfigs(gridSize) {
   const m = 2
@@ -480,8 +480,9 @@ function _tick(io, roomId) {
           if (snake.body.some((seg) => seg.x === bullet.x && seg.y === bullet.y)) {
             const hitSnake = snake
             // Phase 2 already unshifted a new head, so body is 1 longer than before this tick.
-            // Keep at least 3 segments after bullet damage plus the normal movement tail pop.
-            if (hitSnake.body.length <= 6) {
+            // Bullet damage is always 3. After the normal tail pop later this tick, a 4-cell snake
+            // should still survive with 1 cell; only 3 or fewer should die from the hit.
+            if (hitSnake.body.length <= 4) {
               // Too short — die
               dead.add(hitSnake.playerId)
               if (!deadCauses.has(hitSnake.playerId)) {

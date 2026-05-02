@@ -14,238 +14,255 @@ const DIR_MAP = {
   ArrowRight: 'RIGHT', d: 'RIGHT', D: 'RIGHT',
 }
 
-function TutorialDemoCanvas({ demo, color, isTimed, wallDeath }) {
-  const canvasRef = useRef(null)
+function TutorialDemoCanvas({ demo, color, isTimed, wallDeath, attackOn }) {
+  const [frameTime, setFrameTime] = useState(0)
+  const [demoDir, setDemoDir] = useState('RIGHT')
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
     let rafId
-
-    function resize() {
-      const rect = canvas.getBoundingClientRect()
-      const dpr = window.devicePixelRatio || 1
-      canvas.width = Math.max(1, Math.floor(rect.width * dpr))
-      canvas.height = Math.max(1, Math.floor(rect.height * dpr))
+    const animate = (now) => {
+      setFrameTime(now)
+      rafId = requestAnimationFrame(animate)
     }
+    rafId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafId)
+  }, [])
 
-    function clear(w, h) {
-      ctx.fillStyle = '#0d1117'
-      ctx.fillRect(0, 0, w, h)
+  const gridSize = 8
+  const loop = (frameTime % 3600) / 3600
+  const phase = Math.floor(loop * 6)
+  const enemyColor = '#3b82f6'
+  const makeSnake = (playerId, body, snakeColor, alive = true, extra = {}) => ({
+    playerId,
+    name: playerId === 'me' ? '你' : '對手',
+    color: snakeColor,
+    body,
+    alive,
+    score: extra.score || 0,
+    ...extra,
+  })
+
+  let snakes = []
+  let food = []
+  let bullets = []
+  let previewSnake = null
+  let overlay = null
+
+  if (demo === 'color') {
+    snakes = [makeSnake('me', [{ x: 2, y: 4 }, { x: 3, y: 4 }, { x: 4, y: 4 }, { x: 5, y: 4 }], color)]
+    overlay = (
+      <>
+        <div className="absolute left-2 top-2 right-2 h-10 bg-[#161b22]/95 border border-[#30363d] rounded-lg flex items-center justify-center gap-1 pointer-events-none">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} className="w-3 h-3 rounded-sm" style={{ background: color, opacity: i === 0 ? 1 : 0.75 }} />
+          ))}
+          <span className="ml-2 text-xs font-bold text-blue-300">上方小蛇</span>
+        </div>
+        <div className="absolute left-3 top-16 bg-[#21262d]/95 border border-[#30363d] rounded-lg px-3 py-2 flex items-center gap-2 pointer-events-none">
+          <span className="w-3 h-3 rounded-full" style={{ background: color }} />
+          <span className="text-xs font-bold text-white">玩家列表圓點</span>
+        </div>
+        <div className="absolute left-1/2 bottom-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">白框是你的蛇頭</div>
+      </>
+    )
+  } else if (demo === 'food') {
+    const bodies = [
+      [{ x: 1, y: 4 }, { x: 0, y: 4 }, { x: -1, y: 4 }],
+      [{ x: 2, y: 4 }, { x: 1, y: 4 }, { x: 0, y: 4 }],
+      [{ x: 3, y: 4 }, { x: 2, y: 4 }, { x: 1, y: 4 }],
+    ]
+    const ate = phase >= 3
+    snakes = [makeSnake('me', ate
+      ? [{ x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }, { x: 1, y: 4 }]
+      : bodies[Math.min(phase, bodies.length - 1)],
+    color, true, { score: ate ? 10 : 0 })]
+    if (!ate) food = [{ x: 4, y: 4, type: 'regular' }]
+    overlay = (
+      <div className="absolute left-1/2 bottom-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">
+        {ate ? '尾巴保留，所以長度 +1' : '往紅色食物前進'}
+      </div>
+    )
+  } else if (demo === 'move') {
+    const offset = [0, 1, 2, 3, 4, 4][phase]
+    const bodies = {
+      RIGHT: [{ x: 1 + offset, y: 4 }, { x: offset, y: 4 }, { x: offset - 1, y: 4 }],
+      LEFT: [{ x: 6 - offset, y: 4 }, { x: 7 - offset, y: 4 }, { x: 8 - offset, y: 4 }],
+      DOWN: [{ x: 4, y: 1 + offset }, { x: 4, y: offset }, { x: 4, y: offset - 1 }],
+      UP: [{ x: 4, y: 6 - offset }, { x: 4, y: 7 - offset }, { x: 4, y: 8 - offset }],
     }
-
-    function grid(tile) {
-      ctx.strokeStyle = '#263241'
-      ctx.lineWidth = 1
-      for (let i = 0; i <= 6; i++) {
-        ctx.beginPath()
-        ctx.moveTo(i * tile, 0)
-        ctx.lineTo(i * tile, tile * 6)
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.moveTo(0, i * tile)
-        ctx.lineTo(tile * 6, i * tile)
-        ctx.stroke()
-      }
+    const arrow = { UP: '↑', DOWN: '↓', LEFT: '←', RIGHT: '→' }[demoDir]
+    snakes = [makeSnake('me', bodies[demoDir], color)]
+    overlay = (
+      <div className="absolute inset-x-0 bottom-2 flex flex-col items-center gap-1 pointer-events-auto">
+        <div className="text-sm font-black text-blue-300 bg-black/60 rounded px-2 py-0.5">{arrow}</div>
+        <div className="grid grid-cols-3 gap-1">
+          <div />
+          <button onClick={() => setDemoDir('UP')} className="w-9 h-8 rounded bg-[#21262d]/90 text-white font-bold">↑</button>
+          <div />
+          <button onClick={() => setDemoDir('LEFT')} className="w-9 h-8 rounded bg-[#21262d]/90 text-white font-bold">←</button>
+          <button onClick={() => setDemoDir('DOWN')} className="w-9 h-8 rounded bg-[#21262d]/90 text-white font-bold">↓</button>
+          <button onClick={() => setDemoDir('RIGHT')} className="w-9 h-8 rounded bg-[#21262d]/90 text-white font-bold">→</button>
+        </div>
+      </div>
+    )
+  } else if (demo === 'self') {
+    const selfLoop = (frameTime % 4200) / 4200
+    const selfPhase = Math.floor(selfLoop * 7)
+    const bodies = [
+      [{ x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }, { x: 5, y: 3 }],
+      [{ x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }],
+      [{ x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }],
+      [{ x: 4, y: 2 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }],
+      [{ x: 4, y: 3 }, { x: 4, y: 2 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }],
+      [{ x: 3, y: 3 }, { x: 4, y: 3 }, { x: 4, y: 2 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }],
+    ]
+    const corpseBody = [{ x: 4, y: 3 }, { x: 4, y: 2 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }]
+    const dead = selfPhase >= 6
+    snakes = dead ? [] : [makeSnake('me', bodies[Math.min(selfPhase, bodies.length - 1)], color)]
+    food = dead ? corpseBody.map((p) => ({ ...p, type: 'corpse', ownerId: 'me' })) : []
+    let selfText = '頭繞回去撞到自己的身體'
+    if (selfPhase === 5) selfText = '這一步頭真的撞進自己的身體'
+    if (dead) selfText = '自撞死亡，身體變屍體'
+    overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">{selfText}</div>
+  } else if (demo === 'attack') {
+    if (!attackOn) {
+      snakes = [makeSnake('me', [{ x: 2, y: 4 }, { x: 1, y: 4 }, { x: 0, y: 4 }], color)]
+      overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-gray-300 bg-black/60 rounded px-2 py-1 pointer-events-none">本局攻擊關閉</div>
+    } else {
+      const fired = phase >= 2
+      const hit = phase >= 5
+      const enemyBody = [{ x: 6, y: 3 }, { x: 6, y: 4 }, { x: 6, y: 5 }]
+      snakes = [makeSnake('me', fired
+        ? [{ x: 1, y: 3 }, { x: 0, y: 3 }, { x: -1, y: 3 }]
+        : [{ x: 1, y: 3 }, { x: 0, y: 3 }, { x: -1, y: 3 }, { x: -2, y: 3 }],
+      color)]
+      if (!hit) snakes.push(makeSnake('enemy', enemyBody, enemyColor))
+      if (fired && !hit) bullets = [{ id: 'b1', x: Math.min(5, 2 + phase - 2), y: 3, dx: 1, dy: 0, color, playerId: 'me' }]
+      if (hit) food = enemyBody.map((p) => ({ ...p, type: 'corpse', ownerId: 'enemy' }))
+      overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">{hit ? '命中 3 格，3 格對手才會死' : fired ? '射擊先扣自己 1 格' : '按 F / ⚡ 發射'}</div>
     }
-
-    function roundRect(x, y, w, h, r) {
-      ctx.beginPath()
-      if (ctx.roundRect) ctx.roundRect(x, y, w, h, r)
-      else ctx.rect(x, y, w, h)
+  } else if (demo === 'corpse') {
+    const corpsePhase = Math.min(5, phase)
+    const corpseFrames = [
+      {
+        snake: [{ x: 2, y: 4 }, { x: 1, y: 4 }, { x: 0, y: 4 }],
+        food: [{ x: 4, y: 4 }, { x: 5, y: 4 }, { x: 6, y: 4 }],
+        text: '屍體食物存在 10 秒',
+      },
+      {
+        snake: [{ x: 3, y: 4 }, { x: 2, y: 4 }, { x: 1, y: 4 }],
+        food: [{ x: 4, y: 4 }, { x: 5, y: 4 }, { x: 6, y: 4 }],
+        text: '靠近屍體後可以吃掉',
+      },
+      {
+        snake: [{ x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }],
+        food: [{ x: 5, y: 4 }, { x: 6, y: 4 }],
+        text: '吃到第一塊屍體',
+      },
+      {
+        snake: [{ x: 5, y: 4 }, { x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }],
+        food: [{ x: 6, y: 4 }],
+        text: '尾巴保留，所以長度 +1',
+      },
+      {
+        snake: [{ x: 5, y: 4 }, { x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }],
+        food: [{ x: 6, y: 4 }],
+        text: '別人也能吃你的屍體',
+      },
+      {
+        snake: [{ x: 6, y: 4 }, { x: 5, y: 4 }, { x: 4, y: 4 }, { x: 3, y: 4 }],
+        food: [],
+        text: '屍體被吃完就消失',
+      },
+    ]
+    const frame = corpseFrames[corpsePhase]
+    food = frame.food.map((p) => ({ ...p, type: 'corpse', ownerId: 'dead-player' }))
+    snakes = [makeSnake('enemy', frame.snake, enemyColor)]
+    overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-[#c8a06e] bg-black/60 rounded px-2 py-1 pointer-events-none">{frame.text}</div>
+  } else if (demo === 'respawn') {
+    if (!isTimed) {
+      food = [{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }].map((p) => ({ ...p, type: 'corpse', ownerId: 'me' }))
+      snakes = [makeSnake('enemy', [{ x: 3, y: 5 }, { x: 2, y: 5 }, { x: 1, y: 5 }], enemyColor)]
+      overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">存活模式：最後活著的人獲勝</div>
+    } else if (phase < 2) {
+      food = [{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }].map((p) => ({ ...p, type: 'corpse', ownerId: 'me' }))
+      overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">死亡後 10 秒復活</div>
+    } else if (phase < 4) {
+      previewSnake = { body: [{ x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }], direction: 'RIGHT', color }
+      overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-blue-300 bg-black/60 rounded px-2 py-1 pointer-events-none">復活前 3 秒出生預覽</div>
+    } else {
+      snakes = [makeSnake('me', [{ x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }], color, true, { invincibleUntil: Date.now() + 1000 })]
+      overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-blue-300 bg-black/60 rounded px-2 py-1 pointer-events-none">復活後 5 秒無敵</div>
     }
-
-    function segment(tile, x, y, fill, alpha = 1, scale = 1, stroke = null) {
-      const pad = tile * 0.12
-      const size = (tile - pad * 2) * scale
-      const px = x * tile + tile / 2 - size / 2
-      const py = y * tile + tile / 2 - size / 2
-      ctx.save()
-      ctx.globalAlpha = alpha
-      ctx.fillStyle = fill
-      roundRect(px, py, size, size, Math.max(4, tile * 0.14))
-      ctx.fill()
-      if (stroke) {
-        ctx.strokeStyle = stroke
-        ctx.lineWidth = 2
-        ctx.stroke()
-      }
-      ctx.restore()
+  } else if (demo === 'wall') {
+    const x = Math.min(7, 3 + phase)
+    if (wallDeath && phase >= 4) {
+      food = [{ x: 7, y: 3 }, { x: 6, y: 3 }, { x: 5, y: 3 }].map((p) => ({ ...p, type: 'corpse', ownerId: 'me' }))
+    } else {
+      snakes = [makeSnake('me', wallDeath
+        ? [{ x, y: 3 }, { x: x - 1, y: 3 }, { x: x - 2, y: 3 }]
+        : phase >= 4
+          ? [{ x: 6, y: 4 }, { x: 6, y: 3 }, { x: 5, y: 3 }]
+          : [{ x, y: 3 }, { x: x - 1, y: 3 }, { x: x - 2, y: 3 }],
+      color)]
     }
-
-    function snake(tile, body, fill = color, alpha = 1, headStroke = null) {
-      body.forEach((p, i) => segment(tile, p.x, p.y, fill, alpha * (i === 0 ? 1 : 0.82), i === 0 ? 1 : 0.94, i === 0 ? headStroke : null))
+    overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-red-300 bg-black/60 rounded px-2 py-1 pointer-events-none">{wallDeath && phase >= 4 ? '撞牆死亡' : wallDeath ? '碰牆會死亡' : '碰牆會轉向'}</div>
+  } else if (demo === 'boost') {
+    const boostFrames = [
+      {
+        me: [{ x: 2, y: 5 }, { x: 1, y: 5 }, { x: 0, y: 5 }, { x: -1, y: 5 }],
+        enemy: [{ x: 1, y: 4 }, { x: 0, y: 4 }, { x: -1, y: 4 }],
+        text: '加速開始追上對手',
+      },
+      {
+        me: [{ x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }, { x: 1, y: 5 }],
+        enemy: [{ x: 2, y: 4 }, { x: 1, y: 4 }, { x: 0, y: 4 }],
+        text: '加速時移動更快',
+      },
+      {
+        me: [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }],
+        enemy: [{ x: 3, y: 4 }, { x: 2, y: 4 }, { x: 1, y: 4 }],
+        text: '先超過對手頭的位置',
+      },
+      {
+        me: [{ x: 5, y: 4 }, { x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }],
+        enemy: [{ x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }],
+        text: '往上切入準備卡位',
+      },
+      {
+        me: [{ x: 5, y: 3 }, { x: 5, y: 4 }, { x: 5, y: 5 }, { x: 4, y: 5 }],
+        enemy: [{ x: 4, y: 4 }, { x: 3, y: 4 }, { x: 2, y: 4 }],
+        text: '卡到對手前方',
+      },
+      {
+        me: [{ x: 5, y: 3 }, { x: 5, y: 4 }, { x: 5, y: 5 }, { x: 4, y: 5 }],
+        enemy: [{ x: 5, y: 4 }, { x: 4, y: 4 }, { x: 3, y: 4 }],
+        text: '對手下一步會撞上你',
+      },
+    ]
+    const frame = boostFrames[Math.min(boostFrames.length - 1, phase)]
+    const dead = phase >= 5
+    snakes = [makeSnake('me', frame.me, color, true, { boostActive: true })]
+    if (!dead) {
+      snakes.push(makeSnake('enemy', frame.enemy, enemyColor))
+    } else {
+      food = [{ x: 5, y: 4 }, { x: 4, y: 4 }, { x: 3, y: 4 }].map((p) => ({ ...p, type: 'corpse', ownerId: 'enemy' }))
     }
-
-    function food(tile, x, y, pulse = 0) {
-      const r = tile * (0.22 + pulse * 0.05)
-      ctx.save()
-      ctx.shadowColor = '#f87171'
-      ctx.shadowBlur = 12
-      ctx.fillStyle = '#f87171'
-      ctx.beginPath()
-      ctx.arc(x * tile + tile / 2, y * tile + tile / 2, r, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
-    }
-
-    function corpse(tile, points, alpha = 0.75) {
-      points.forEach((p) => {
-        ctx.save()
-        ctx.globalAlpha = alpha
-        ctx.fillStyle = '#c8a06e'
-        ctx.beginPath()
-        ctx.arc(p.x * tile + tile / 2, p.y * tile + tile / 2, tile * 0.22, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      })
-    }
-
-    function bullet(tile, x, y, dx = 1) {
-      ctx.save()
-      ctx.translate(x * tile + tile / 2, y * tile + tile / 2)
-      if (dx < 0) ctx.rotate(Math.PI)
-      ctx.shadowColor = '#ef4444'
-      ctx.shadowBlur = 14
-      ctx.fillStyle = '#ef4444'
-      ctx.beginPath()
-      ctx.ellipse(0, 0, tile * 0.34, tile * 0.13, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.shadowBlur = 0
-      ctx.fillStyle = 'rgba(255,255,255,0.85)'
-      ctx.beginPath()
-      ctx.ellipse(0, 0, tile * 0.18, tile * 0.06, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
-    }
-
-    function label(tile, text, x, y, fill = '#facc15') {
-      ctx.save()
-      ctx.font = `700 ${Math.max(12, tile * 0.28)}px system-ui, sans-serif`
-      ctx.fillStyle = fill
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(text, x * tile + tile / 2, y * tile + tile / 2)
-      ctx.restore()
-    }
-
-    function drawFrame(now) {
-      const dpr = window.devicePixelRatio || 1
-      const w = canvas.width / dpr
-      const h = canvas.height / dpr
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      clear(w, h)
-      const tile = Math.min(w, h) / 6
-      grid(tile)
-
-      const loop = (now % 3600) / 3600
-      const pulse = (Math.sin(now / 180) + 1) / 2
-      const enemy = '#3b82f6'
-
-      if (demo === 'color') {
-        snake(tile, [{ x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }], color, 1, '#ffffff')
-        segment(tile, 1, 2, color, 0.55, 1.25 + pulse * 0.12, '#ffffff')
-        label(tile, '你', 1, 1, '#ffffff')
-      } else if (demo === 'food') {
-        const x = Math.min(3, 1 + loop * 3.8)
-        const ate = loop > 0.62
-        snake(tile, ate
-          ? [{ x: 4, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 2 }, { x: 1, y: 2 }]
-          : [{ x, y: 2 }, { x: x - 1, y: 2 }, { x: x - 2, y: 2 }],
-        color, 1, '#ffffff')
-        if (!ate) food(tile, 4, 2, pulse)
-        if (ate) label(tile, '+10', 4, 1, '#facc15')
-      } else if (demo === 'move') {
-        const x = 1 + loop * 3.5
-        snake(tile, [{ x, y: 2 }, { x: x - 1, y: 2 }, { x: x - 2, y: 2 }], color, 1, '#ffffff')
-        label(tile, '→', 4, 1, '#93c5fd')
-      } else if (demo === 'attack') {
-        const fired = loop > 0.18
-        const hit = loop > 0.68
-        const shooter = fired
-          ? [{ x: 1, y: 2 }, { x: 0, y: 2 }, { x: -1, y: 2 }]
-          : [{ x: 1, y: 2 }, { x: 0, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 2 }]
-        snake(tile, shooter, color, 1, '#ffffff')
-        if (!hit) {
-          snake(tile, [{ x: 4, y: 2 }, { x: 4, y: 3 }, { x: 4, y: 4 }, { x: 5, y: 4 }], enemy, 1, null)
-          if (fired) bullet(tile, 1.4 + (loop - 0.18) / 0.5 * 2.3, 2)
-          if (fired) label(tile, '自己 -1', 1, 0, '#facc15')
-        } else {
-          corpse(tile, [{ x: 4, y: 2 }, { x: 4, y: 3 }, { x: 4, y: 4 }, { x: 5, y: 4 }], 0.75)
-          label(tile, '命中 -3', 4, 1, '#f87171')
-          label(tile, '死亡', 4, 5, '#f87171')
-        }
-      } else if (demo === 'corpse') {
-        if (loop < 0.35) {
-          snake(tile, [{ x: 2, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }], color, 1, '#ffffff')
-          label(tile, '死亡', 2, 1, '#f87171')
-        } else {
-          corpse(tile, [{ x: 2, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }], 0.35 + (1 - loop) * 0.55)
-          const eaterX = Math.min(3.2, 0.5 + (loop - 0.35) * 3.5)
-          snake(tile, [{ x: eaterX, y: 3 }, { x: eaterX - 1, y: 3 }, { x: eaterX - 2, y: 3 }], enemy, 1, '#ffffff')
-          label(tile, '10s', 4, 1, '#c8a06e')
-        }
-      } else if (demo === 'respawn') {
-        if (!isTimed) {
-          corpse(tile, [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }], 0.7)
-          snake(tile, [{ x: 2, y: 4 }, { x: 1, y: 4 }, { x: 0, y: 4 }], enemy, 1, '#ffffff')
-          label(tile, '最後存活', 3, 1, '#facc15')
-        } else if (loop < 0.34) {
-          corpse(tile, [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }], 0.65)
-          label(tile, '復活 10', 3, 4, '#facc15')
-        } else if (loop < 0.66) {
-          snake(tile, [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }], color, 0.35 + pulse * 0.25, '#ffffff')
-          label(tile, '出生預覽', 3, 1, '#93c5fd')
-        } else {
-          snake(tile, [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }], color, 1, '#93c5fd')
-          segment(tile, 3, 3, color, 0.25, 1.35 + pulse * 0.12, '#93c5fd')
-          label(tile, '無敵 5s', 3, 1, '#93c5fd')
-        }
-      } else if (demo === 'wall') {
-        ctx.fillStyle = '#7f1d1d'
-        ctx.fillRect(tile * 5, 0, tile, tile * 6)
-        const x = 2 + Math.min(loop / 0.55, 1) * 3
-        if (wallDeath && loop > 0.58) {
-          corpse(tile, [{ x: 5, y: 2 }, { x: 4, y: 2 }, { x: 3, y: 2 }], 0.75)
-          label(tile, '撞牆死亡', 3, 4, '#f87171')
-        } else {
-          const bounced = !wallDeath && loop > 0.58
-          snake(tile, bounced
-            ? [{ x: 4, y: 3 }, { x: 4, y: 2 }, { x: 3, y: 2 }]
-            : [{ x, y: 2 }, { x: x - 1, y: 2 }, { x: x - 2, y: 2 }],
-          color, 1, '#ffffff')
-          if (bounced) label(tile, '轉向', 4, 1, '#93c5fd')
-        }
-      } else if (demo === 'boost') {
-        const x = 0.8 + loop * 4
-        const body = loop > 0.5
-          ? [{ x, y: 3 }, { x: x - 1, y: 3 }, { x: x - 2, y: 3 }]
-          : [{ x, y: 3 }, { x: x - 1, y: 3 }, { x: x - 2, y: 3 }, { x: x - 3, y: 3 }]
-        snake(tile, body, color, 1, '#facc15')
-        segment(tile, x, 3, color, 0.35, 1.3 + pulse * 0.1, '#facc15')
-        label(tile, loop > 0.5 ? '-1' : '加速', 3, 1, '#facc15')
-      }
-
-      rafId = requestAnimationFrame(drawFrame)
-    }
-
-    resize()
-    const ro = new ResizeObserver(resize)
-    ro.observe(canvas)
-    rafId = requestAnimationFrame(drawFrame)
-    return () => {
-      cancelAnimationFrame(rafId)
-      ro.disconnect()
-    }
-  }, [demo, color, isTimed, wallDeath])
+    overlay = <div className="absolute left-1/2 top-3 -translate-x-1/2 text-xs font-bold text-yellow-300 bg-black/60 rounded px-2 py-1 pointer-events-none">{dead ? '對手撞到你的身體死亡' : frame.text}</div>
+  }
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="block w-full h-full rounded-xl bg-[#0d1117]"
-      style={{ imageRendering: 'pixelated' }}
-    />
+    <div className="relative w-full h-full">
+      <GameCanvas
+        snakes={snakes}
+        food={food}
+        bullets={bullets}
+        gridSize={gridSize}
+        myPlayerId="me"
+        previewSnake={previewSnake}
+      />
+      {overlay}
+    </div>
   )
 }
 
@@ -264,7 +281,7 @@ function TutorialOverlay({ state, isTimed, isHost, onPrev, onNext, onFinish }) {
   const steps = [
     {
       title: '辨認自己的顏色',
-      text: '你的顏色會出現在上方小蛇、地圖蛇頭外框，以及玩家列表圓點。',
+      text: '看上方中間的小蛇可以確認自己的顏色；同一個顏色也會出現在地圖蛇頭外框和玩家列表圓點。',
       stat: '顏色 = 身分',
       demo: 'color',
     },
@@ -279,6 +296,12 @@ function TutorialOverlay({ state, isTimed, isHost, onPrev, onNext, onFinish }) {
       text: '方向鍵或 WASD 控制移動，手機用下方方向鍵。教學結束倒數後才會開始移動。',
       stat: '鍵盤 / 手機皆可',
       demo: 'move',
+    },
+    {
+      title: '自撞也會死亡',
+      text: '蛇頭撞到自己的身體會死亡。轉彎時要注意不要繞回去撞到自己的身體。',
+      stat: '撞到自己 = 死亡',
+      demo: 'self',
     },
     {
       title: '攻擊規則',
@@ -309,9 +332,9 @@ function TutorialOverlay({ state, isTimed, isHost, onPrev, onNext, onFinish }) {
       demo: 'wall',
     },
     {
-      title: '加速模式',
-      text: boostOn ? '加速模式已啟用：按 E 或手機 🚀 切換，加速時移動更快，每 2 秒扣 1 格尾巴。' : '本局沒有加速模式。',
-      stat: boostOn ? '每 2 秒 -1 格' : '加速關閉',
+      title: '加速與卡位',
+      text: boostOn ? '按 E 或手機 🚀 加速，可以更快繞到對手前方卡位；對手撞到你的身體會死亡。加速每 2 秒扣 1 格尾巴。' : '本局沒有加速模式；一般情況下，對手撞到你的身體也會死亡。',
+      stat: boostOn ? '加速卡位 / 對手撞你會死' : '對手撞你會死',
       demo: 'boost',
     },
   ]
@@ -320,80 +343,125 @@ function TutorialOverlay({ state, isTimed, isHost, onPrev, onNext, onFinish }) {
   const isLast = step === steps.length - 1
 
   return (
-    <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3">
-      <div className="w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-2xl overflow-hidden shadow-2xl">
-        <div className="px-5 py-4 border-b border-[#30363d] flex items-center justify-between gap-3">
-          <div>
-            <div className="text-lg font-bold text-white">規則教學試玩</div>
-            <div className="text-xs text-gray-500 mt-1">{isTimed ? '計時模式' : '存活模式'} · {attackText}</div>
+    <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-0 sm:p-3">
+      <div className="w-full h-full sm:h-auto sm:max-w-3xl sm:max-h-[calc(100dvh-1.5rem)] bg-[#161b22] sm:border border-[#30363d] sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col">
+        <div className="px-3 sm:px-5 py-2 sm:py-4 border-b border-[#30363d] flex items-center justify-between gap-3 shrink-0">
+          <div className="min-w-0">
+            <div className="text-sm sm:text-lg font-bold text-white">規則教學試玩</div>
+            <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">{isTimed ? '計時模式' : '存活模式'} · {attackText}</div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {state.snakes.slice(0, 4).map((s) => (
-              <span key={s.playerId} className="w-3 h-3 rounded-full" style={{ background: s.color }} />
+              <span key={s.playerId} className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full" style={{ background: s.color }} />
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.1fr] gap-4 p-5">
-          <div className="aspect-square bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
-            <TutorialDemoCanvas
-              key={step}
-              demo={current.demo}
-              color={myColor}
-              isTimed={isTimed}
-              wallDeath={wallDeath}
-            />
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {/* Mobile: fixed reading order, no CSS reordering tricks. */}
+          <div className="md:hidden h-full flex flex-col gap-2 p-3">
+            <div className="grid grid-cols-[72px_1fr] gap-2 text-xs shrink-0">
+              <div className="bg-[#0d1117] border border-[#30363d] rounded-lg px-2 py-1.5">
                 <div className="text-gray-500">進度</div>
-                <div className="text-green-400 font-mono text-lg font-bold">{step + 1}/{steps.length}</div>
+                <div className="text-green-400 font-mono text-sm font-bold">{step + 1}/{steps.length}</div>
               </div>
-              <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3">
+              <div className="bg-[#0d1117] border border-[#30363d] rounded-lg px-2 py-1.5 min-w-0">
                 <div className="text-gray-500">重點</div>
-                <div className="text-yellow-400 font-mono text-lg font-bold truncate">{current.stat}</div>
+                <div className="text-yellow-400 font-mono text-xs font-bold truncate">{current.stat}</div>
               </div>
             </div>
 
-            <div key={step} className="tutorial-card bg-[#0d1117] border border-[#30363d] rounded-xl p-4 min-h-[150px]">
-              <div className="text-xl font-bold text-white mb-3">{current.title}</div>
-              <div className="text-sm text-gray-300 leading-relaxed">{current.text}</div>
+            <div key={step} className="tutorial-card bg-[#0d1117] border border-[#30363d] rounded-lg p-3 shrink-0">
+              <div className="text-lg font-bold text-white mb-2">{current.title}</div>
+              <div className="text-sm text-gray-100 leading-relaxed">{current.text}</div>
             </div>
 
-            <div className="flex gap-1.5">
+            <div className="flex gap-1 shrink-0">
               {steps.map((s, i) => (
                 <div
                   key={s.title}
-                  className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-green-400' : 'bg-[#30363d]'}`}
+                  className={`h-1 flex-1 rounded-full ${i <= step ? 'bg-green-400' : 'bg-[#30363d]'}`}
                 />
               ))}
             </div>
 
-            <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-              <div className="text-xs text-gray-500">
-                {isHost ? '主持人控制下一步，所有玩家同步看到同一頁。' : '等待房主切換下一個規則。'}
+            <div className="min-h-0 flex-1 flex items-center justify-center">
+              <div className="h-full max-h-full max-w-full aspect-square bg-[#0d1117] border border-[#30363d] rounded-lg overflow-hidden">
+                <TutorialDemoCanvas
+                  key={step}
+                  demo={current.demo}
+                  color={myColor}
+                  isTimed={isTimed}
+                  wallDeath={wallDeath}
+                  attackOn={attackOn}
+                />
               </div>
-              {isHost && (
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={onPrev}
-                    disabled={step === 0}
-                    className="bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 font-semibold px-4 py-2.5 rounded-xl transition"
-                  >
-                    上一步
-                  </button>
-                  <button
-                    onClick={isLast ? onFinish : onNext}
-                    className="bg-green-500 hover:bg-green-400 text-black font-bold px-5 py-2.5 rounded-xl transition"
-                  >
-                    {isLast ? '開始倒數' : '下一步'}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
+
+          {/* Desktop/tablet: roomy side-by-side layout. */}
+          <div className="hidden md:grid h-full grid-cols-[minmax(240px,1fr)_1.1fr] gap-4 p-5">
+            <div className="w-full max-w-[min(58vh,420px)] md:max-w-none mx-auto md:mx-0 aspect-square bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
+              <TutorialDemoCanvas
+                key={step}
+                demo={current.demo}
+                color={myColor}
+                isTimed={isTimed}
+                wallDeath={wallDeath}
+                attackOn={attackOn}
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 min-h-0">
+              <div className="grid grid-cols-2 gap-2 text-xs shrink-0">
+                <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3">
+                  <div className="text-gray-500">進度</div>
+                  <div className="text-green-400 font-mono text-lg font-bold">{step + 1}/{steps.length}</div>
+                </div>
+                <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3 min-w-0">
+                  <div className="text-gray-500">重點</div>
+                  <div className="text-yellow-400 font-mono text-lg font-bold truncate">{current.stat}</div>
+                </div>
+              </div>
+
+              <div key={step} className="tutorial-card bg-[#0d1117] border border-[#30363d] rounded-xl p-4 shrink-0">
+                <div className="text-xl font-bold text-white mb-3">{current.title}</div>
+                <div className="text-sm text-gray-200 leading-relaxed">{current.text}</div>
+              </div>
+
+              <div className="flex gap-1.5 pb-0.5 shrink-0">
+                {steps.map((s, i) => (
+                  <div
+                    key={s.title}
+                    className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-green-400' : 'bg-[#30363d]'}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-[#30363d] bg-[#161b22] px-2.5 sm:px-5 py-2 sm:py-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+          <div className="text-[10px] sm:text-xs text-gray-500 leading-tight sm:leading-relaxed">
+            {isHost ? '主持人控制下一步，所有玩家同步看到同一頁。' : '等待房主切換下一個規則。'}
+          </div>
+          {isHost && (
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2 shrink-0">
+              <button
+                onClick={onPrev}
+                disabled={step === 0}
+                className="h-10 sm:h-11 bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 font-semibold px-4 rounded-lg sm:rounded-xl transition"
+              >
+                上一步
+              </button>
+              <button
+                onClick={isLast ? onFinish : onNext}
+                className="h-10 sm:h-11 bg-green-500 hover:bg-green-400 text-black font-bold px-5 rounded-lg sm:rounded-xl transition"
+              >
+                {isLast ? '開始倒數' : '下一步'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -693,17 +761,12 @@ export default function Game() {
         {/* Centre: mini snake showing my color */}
         {mySnake && (() => {
           const c = mySnake.color
-          const s = 7   // segment px
-          const g = 2   // gap px
+          const s = 7
+          const g = 2
           const u = s + g
-          // S-shape: 3 right on top, turn down, 3 left on bottom
-          const segs = [
-            { x: u*2, y: 0 }, { x: u, y: 0 }, { x: 0, y: 0 },   // head→left
-            { x: 0, y: u },                                         // turn
-            { x: 0, y: u*2 }, { x: u, y: u*2 }, { x: u*2, y: u*2 }, // tail→right
-          ]
+          const segs = Array.from({ length: 7 }, (_, i) => ({ x: i * u, y: 0 }))
           return (
-            <svg width={u*3} height={u*3-g} style={{ display: 'block', flexShrink: 0 }}>
+            <svg width={u*7-g} height={s} style={{ display: 'block', flexShrink: 0 }}>
               {segs.map((p, i) => (
                 <rect
                   key={i} x={p.x} y={p.y} width={s} height={s} rx={2}
@@ -712,7 +775,7 @@ export default function Game() {
                 />
               ))}
               {/* eye on head */}
-              <circle cx={u*2 + s - 2} cy={3} r={1.2} fill="#000" opacity={0.7} />
+              <circle cx={s - 2} cy={3} r={1.2} fill="#000" opacity={0.7} />
             </svg>
           )
         })()}
@@ -969,8 +1032,8 @@ export default function Game() {
         </div>
       </div>
 
-      {/* Mobile controls — hidden when game is finished so GameOver overlay isn't obscured */}
-      {state.status !== 'finished' && (
+      {/* Mobile controls — hidden during overlays so the full game/tutorial fits on screen */}
+      {state.status !== 'finished' && !state.tutorialActive && !state.startCountdown && (
         <div className="sm:hidden flex items-end justify-center gap-4 pb-4 pt-2 shrink-0">
           {/* D-pad: keep cross symmetric */}
           <div className="flex flex-col items-center gap-2">
