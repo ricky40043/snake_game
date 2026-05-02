@@ -86,6 +86,9 @@ function registerRoomHandlers(io, socket, socketMap) {
         attackUnlocked,
         wallDeath: game.wallDeath,
         boostEnabled: game.boostEnabled,
+        tutorialEnabled: game.tutorialEnabled,
+        tutorialActive: game.tutorialActive,
+        tutorialStep: game.tutorialStep,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -162,6 +165,9 @@ function registerRoomHandlers(io, socket, socketMap) {
         attackUnlocked,
         wallDeath: game.wallDeath,
         boostEnabled: game.boostEnabled,
+        tutorialEnabled: game.tutorialEnabled,
+        tutorialActive: game.tutorialActive,
+        tutorialStep: game.tutorialStep,
         snakes: Object.values(game.snakes).map((s) => ({
           playerId: s.playerId,
           body: s.body,
@@ -230,9 +236,10 @@ function registerRoomHandlers(io, socket, socketMap) {
     if (fc >= 1 && fc <= 10) room.settings.foodCount = fc
     if (typeof settings.attackEnabled === 'boolean') room.settings.attackEnabled = settings.attackEnabled
     const unlockRem = Math.round(Number(settings.attackUnlockRemaining))
-    if (!isNaN(unlockRem) && unlockRem >= 0 && unlockRem <= 300) room.settings.attackUnlockRemaining = unlockRem
+    if (!isNaN(unlockRem) && unlockRem >= 0 && unlockRem <= 600) room.settings.attackUnlockRemaining = unlockRem
     if (typeof settings.wallDeath === 'boolean') room.settings.wallDeath = settings.wallDeath
     if (typeof settings.boostEnabled === 'boolean') room.settings.boostEnabled = settings.boostEnabled
+    if (typeof settings.tutorialEnabled === 'boolean') room.settings.tutorialEnabled = settings.tutorialEnabled
 
     const mp = Math.round(Number(settings.maxPlayers))
     if (!isNaN(mp) && mp >= 2 && mp <= config.maxPlayersPerRoom) {

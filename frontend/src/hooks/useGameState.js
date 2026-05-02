@@ -28,6 +28,9 @@ const initialState = {
   attackUnlocked: true,
   wallDeath: true,
   boostEnabled: false,
+  tutorialEnabled: false,
+  tutorialActive: false,
+  tutorialStep: 0,
 
   // Result
   winnerId: null,
@@ -81,7 +84,7 @@ export function useGameState() {
       }))
     })
 
-    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused, attackEnabled, attackUnlockRemaining, attackUnlocked, wallDeath, boostEnabled }) => {
+    socket.on('game_started', ({ gridSize, tickMs, snakes, food, mode, duration, paused, attackEnabled, attackUnlockRemaining, attackUnlocked, wallDeath, boostEnabled, tutorialEnabled, tutorialActive, tutorialStep }) => {
       setState((prev) => ({
         ...prev,
         status: 'playing',
@@ -99,6 +102,9 @@ export function useGameState() {
         attackUnlocked: attackUnlocked !== false,
         wallDeath: wallDeath !== false,
         boostEnabled: boostEnabled === true,
+        tutorialEnabled: tutorialEnabled === true,
+        tutorialActive: tutorialActive === true,
+        tutorialStep: tutorialStep || 0,
         winnerId: null,
         winnerName: null,
         rankings: [],
@@ -109,7 +115,19 @@ export function useGameState() {
     })
 
     socket.on('game_countdown', ({ countdown }) => {
-      setState((prev) => ({ ...prev, startCountdown: countdown }))
+      setState((prev) => ({ ...prev, startCountdown: countdown, tutorialActive: false }))
+    })
+
+    socket.on('game_tutorial_started', ({ step } = {}) => {
+      setState((prev) => ({ ...prev, tutorialActive: true, tutorialStep: step || 0, startCountdown: null }))
+    })
+
+    socket.on('game_tutorial_step', ({ step }) => {
+      setState((prev) => ({ ...prev, tutorialStep: step || 0 }))
+    })
+
+    socket.on('game_tutorial_finished', () => {
+      setState((prev) => ({ ...prev, tutorialActive: false, tutorialStep: 0 }))
     })
 
     socket.on('game_paused', () => {
@@ -177,6 +195,8 @@ export function useGameState() {
         winnerName,
         rankings,
         respawnPreview: null,
+        tutorialActive: false,
+        tutorialStep: 0,
       }))
     })
 
@@ -193,6 +213,8 @@ export function useGameState() {
         rankings: [],
         respawnPreview: null,
         startCountdown: null,
+        tutorialActive: false,
+        tutorialStep: 0,
         deathCause: null,
         revengeKill: null,
       }))
@@ -232,6 +254,9 @@ export function useGameState() {
       socket.off('player_died')
       socket.off('revenge_kill')
       socket.off('game_countdown')
+      socket.off('game_tutorial_started')
+      socket.off('game_tutorial_step')
+      socket.off('game_tutorial_finished')
       socket.off('error')
       socket.off('connect_error')
     }

@@ -18,6 +18,33 @@ function registerGameHandlers(io, socket, socketMap) {
     gameService.startGame(io, roomId)
   })
 
+  socket.on('finish_tutorial', ({ roomId } = {}) => {
+    const info = socketMap.get(socket.id)
+    if (!info) return
+    const room = roomService.getRoom(roomId)
+    if (!room || room.hostId !== info.playerId) return
+    if (room.status !== 'playing') return
+    gameService.finishTutorial(io, roomId)
+  })
+
+  socket.on('tutorial_next', ({ roomId } = {}) => {
+    const info = socketMap.get(socket.id)
+    if (!info) return
+    const room = roomService.getRoom(roomId)
+    if (!room || room.hostId !== info.playerId) return
+    if (room.status !== 'playing') return
+    gameService.setTutorialStep(io, roomId, 1)
+  })
+
+  socket.on('tutorial_prev', ({ roomId } = {}) => {
+    const info = socketMap.get(socket.id)
+    if (!info) return
+    const room = roomService.getRoom(roomId)
+    if (!room || room.hostId !== info.playerId) return
+    if (room.status !== 'playing') return
+    gameService.setTutorialStep(io, roomId, -1)
+  })
+
   // Attack: fire a bullet (attack mode only)
   socket.on('shoot', ({ roomId } = {}) => {
     const info = socketMap.get(socket.id)

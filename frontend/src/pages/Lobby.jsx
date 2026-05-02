@@ -59,7 +59,7 @@ export default function Lobby() {
     if (state.settings?.foodCount) setLocalFood(state.settings.foodCount)
     if (state.settings?.attackUnlockRemaining !== undefined) setLocalAttackUnlock(state.settings.attackUnlockRemaining)
     if (state.settings?.maxPlayers) setLocalMaxPlayers(state.settings.maxPlayers)
-  }, [state.settings?.gridSize, state.settings?.tickMs, state.settings?.duration, state.settings?.foodCount, state.settings?.attackUnlockRemaining, state.settings?.maxPlayers, localAttackUnlock])
+  }, [state.settings?.gridSize, state.settings?.tickMs, state.settings?.duration, state.settings?.foodCount, state.settings?.attackUnlockRemaining, state.settings?.maxPlayers])
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -93,12 +93,22 @@ export default function Lobby() {
   }
   function startGame() { socket.emit('start_game', { roomId }) }
 
+  function updateSettingsPatch(settingsPatch) {
+    socket.emit('update_settings', { roomId, settings: settingsPatch })
+  }
   function updateSettings(key, value) {
-    socket.emit('update_settings', { roomId, settings: { [key]: value } })
+    updateSettingsPatch({ [key]: value })
   }
   function commitGrid(val) { updateSettings('gridSize', Number(val)) }
   function commitSpeed(val) { updateSettings('tickMs', speedToTickMs(Number(val))) }
-  function commitDuration(val) { updateSettings('duration', Number(val)) }
+  function commitDuration(val) {
+    const duration = Number(val)
+    updateSettings('duration', duration)
+    if (localAttackUnlock > duration) {
+      setLocalAttackUnlock(duration)
+      updateSettingsPatch({ attackUnlockRemaining: duration, attackEnabled: duration > 0 })
+    }
+  }
   function commitFood(val) { updateSettings('foodCount', Number(val)) }
   function setMode(mode) { updateSettings('mode', mode) }
 
@@ -306,6 +316,21 @@ export default function Lobby() {
 
               {showAdvanced && (
                 <div className="mt-4 space-y-5">
+                  {/* Tutorial */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.tutorialEnabled === true}
+                      disabled={!state.isHost}
+                      onChange={(e) => updateSettings('tutorialEnabled', e.target.checked)}
+                      className="mt-1 h-4 w-4 accent-green-500 disabled:opacity-50"
+                    />
+                    <span>
+                      <span className="block text-sm text-gray-300">啟用教學試玩</span>
+                      <span className="block text-xs text-gray-600 mt-0.5">開始後先顯示規則與操作導覽，房主確認後才進入倒數</span>
+                    </span>
+                  </label>
+
                   {/* Food count */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -330,7 +355,21 @@ export default function Lobby() {
                       <span className="text-sm text-gray-300">⚡ 攻擊射擊</span>
                       <button
                         disabled={!state.isHost}
-                        onClick={() => { if (state.isHost) updateSettings('attackEnabled', !(settings.attackEnabled !== false)) }}
+                        onClick={() => {
+                          if (!state.isHost) return
+                          const currentlyEnabled = settings.attackEnabled !== false
+                          if (currentlyEnabled) {
+                            updateSettings('attackEnabled', false)
+                            return
+                          }
+                          if (currentMode === 'timed') {
+                            const nextWindow = localAttackUnlock > 0 ? localAttackUnlock : localDuration
+                            setLocalAttackUnlock(nextWindow)
+                            updateSettingsPatch({ attackEnabled: true, attackUnlockRemaining: nextWindow })
+                          } else {
+                            updateSettings('attackEnabled', true)
+                          }
+                        }}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:cursor-default
                           ${settings.attackEnabled !== false ? 'bg-red-500' : 'bg-gray-600'}`}
                       >
@@ -339,28 +378,35 @@ export default function Lobby() {
                       </button>
                     </div>
 
-                    {/* Unlock delay — only shown in timed mode when attack is enabled */}
-                    {currentMode === 'timed' && settings.attackEnabled !== false && (
+                    {/* Attack duration — only shown in timed mode */}
+                    {currentMode === 'timed' && (
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-gray-400">解鎖時機</span>
+                          <span className="text-xs text-gray-400">啟用時間</span>
                           <span className="text-xs font-mono font-bold text-red-400">
-                            {localAttackUnlock === 0 ? '遊戲開始即解鎖' : `剩餘 ${localAttackUnlock >= 60 ? `${Math.floor(localAttackUnlock/60)}分` : ''}${localAttackUnlock % 60 > 0 ? `${localAttackUnlock % 60}秒` : ''} 時解鎖`}
+                            {settings.attackEnabled === false || localAttackUnlock === 0
+                              ? '完全不啟用'
+                              : localAttackUnlock >= localDuration
+                                ? '全時間'
+                                : `最後 ${localAttackUnlock >= 60 ? `${Math.floor(localAttackUnlock/60)}分` : ''}${localAttackUnlock % 60 > 0 ? `${localAttackUnlock % 60}秒` : ''}`}
                           </span>
                         </div>
                         <input
-                          type="range" min={0} max={180} step={30}
-                          value={localAttackUnlock}
+                          type="range" min={0} max={localDuration} step={10}
+                          value={settings.attackEnabled === false ? 0 : Math.min(localAttackUnlock, localDuration)}
                           disabled={!state.isHost}
                           onChange={(e) => {
                             const v = Number(e.target.value)
                             setLocalAttackUnlock(v)
-                            updateSettings('attackUnlockRemaining', v)
+                            updateSettingsPatch({
+                              attackEnabled: v > 0,
+                              attackUnlockRemaining: v,
+                            })
                           }}
                           className="w-full accent-red-500 disabled:opacity-50 disabled:cursor-default cursor-pointer"
                         />
                         <div className="flex justify-between text-xs text-gray-600 mt-1">
-                          <span>立即</span><span>剩3分鐘</span>
+                          <span>完全不啟用</span><span>{formatDuration(localDuration)}</span>
                         </div>
                       </div>
                     )}

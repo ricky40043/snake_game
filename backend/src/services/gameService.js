@@ -13,6 +13,8 @@ const RESPAWN_DELAY_MS = 10000
 const RESPAWN_SAFE_RADIUS = 6
 const INVINCIBLE_MS = 5000
 const START_COUNTDOWN_SEC = 3
+const BULLET_DAMAGE_SEGMENTS = 3
+const TUTORIAL_STEP_COUNT = 8
 
 function getSpawnConfigs(gridSize) {
   const m = 2
@@ -152,11 +154,26 @@ function processShoot(game, playerId) {
   })
 }
 
+function startCountdown(io, roomId, n = START_COUNTDOWN_SEC) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game) return
+  const game = room.game
+  if (n > 0) {
+    io.to(roomId).emit('game_countdown', { countdown: n })
+    game.countdownTimer = setTimeout(() => startCountdown(io, roomId, n - 1), 1000)
+    return
+  }
+  game.countdownTimer = null
+  if (!game.paused && !game.intervalId) {
+    game.intervalId = setInterval(() => tick(io, roomId), game.tickMs)
+  }
+}
+
 function startGame(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room) return
 
-  const { gridSize, tickMs, mode, duration, foodCount, attackEnabled, attackUnlockRemaining, wallDeath, boostEnabled } = room.settings
+  const { gridSize, tickMs, mode, duration, foodCount, attackEnabled, attackUnlockRemaining, wallDeath, boostEnabled, tutorialEnabled } = room.settings
   const alivePlayers = [...room.players.values()].filter((p) => p.isOnline)
   const spawnConfigs = getSpawnConfigs(gridSize)
 
@@ -204,9 +221,12 @@ function startGame(io, roomId) {
     totalPausedMs: 0,
     pausedAt: null,
     attackEnabled: attackEnabled !== false,
-    attackUnlockRemaining: attackUnlockRemaining || 0,
+    attackUnlockRemaining: Math.min(attackUnlockRemaining || 0, duration || 180),
     wallDeath: wallDeath !== false,
     boostEnabled: boostEnabled === true,
+    tutorialEnabled: tutorialEnabled === true,
+    tutorialActive: tutorialEnabled === true,
+    tutorialStep: 0,
     lastKilledBy: {},    // victimId → killerId (for revenge detection)
   }
   room.status = 'playing'
@@ -231,23 +251,33 @@ function startGame(io, roomId) {
     attackUnlocked: attackUnlockedNow,
     wallDeath: room.game.wallDeath,
     boostEnabled: room.game.boostEnabled,
+    tutorialEnabled: room.game.tutorialEnabled,
+    tutorialActive: room.game.tutorialActive,
+    tutorialStep: room.game.tutorialStep,
   })
 
-  // Countdown START_COUNTDOWN_SEC → 1, then start ticking
   room.game.countdownTimer = null
-  const emitCountdown = (n) => {
-    if (!room.game) return
-    if (n > 0) {
-      io.to(roomId).emit('game_countdown', { countdown: n })
-      room.game.countdownTimer = setTimeout(() => emitCountdown(n - 1), 1000)
-    } else {
-      room.game.countdownTimer = null
-      if (!room.game.paused) {
-        room.game.intervalId = setInterval(() => tick(io, roomId), tickMs)
-      }
-    }
+  if (room.game.tutorialActive) {
+    io.to(roomId).emit('game_tutorial_started', { step: room.game.tutorialStep })
+  } else {
+    startCountdown(io, roomId)
   }
-  emitCountdown(START_COUNTDOWN_SEC)
+}
+
+function setTutorialStep(io, roomId, delta) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game || !room.game.tutorialActive) return
+  const nextStep = Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, room.game.tutorialStep + delta))
+  room.game.tutorialStep = nextStep
+  io.to(roomId).emit('game_tutorial_step', { step: nextStep })
+}
+
+function finishTutorial(io, roomId) {
+  const room = roomService.getRoom(roomId)
+  if (!room?.game || !room.game.tutorialActive) return
+  room.game.tutorialActive = false
+  io.to(roomId).emit('game_tutorial_finished')
+  startCountdown(io, roomId)
 }
 
 function tick(io, roomId) {
@@ -449,9 +479,8 @@ function _tick(io, roomId) {
           if (snake.invincibleUntil && snake.invincibleUntil > now) continue
           if (snake.body.some((seg) => seg.x === bullet.x && seg.y === bullet.y)) {
             const hitSnake = snake
-            // NOTE: Phase 2 already unshifted a new head, so body is 1 longer than before this tick.
-            // Threshold <= 6 corresponds to "was <= 5 before this tick", and ensures splice won't
-            // leave body with 0~1 segments which would crash next tick's Phase 2 (body[0] undefined).
+            // Phase 2 already unshifted a new head, so body is 1 longer than before this tick.
+            // Keep at least 3 segments after bullet damage plus the normal movement tail pop.
             if (hitSnake.body.length <= 6) {
               // Too short — die
               dead.add(hitSnake.playerId)
@@ -459,8 +488,8 @@ function _tick(io, roomId) {
                 deadCauses.set(hitSnake.playerId, { type: 'bullet', killerId: bullet.playerId, killerName: game.snakes[bullet.playerId]?.name || '?' })
               }
             } else {
-              // Remove 5 tail segments, convert to corpse food
-              const removedSegs = hitSnake.body.splice(hitSnake.body.length - 5, 5)
+              // Remove tail segments as bullet damage, convert them to corpse food
+              const removedSegs = hitSnake.body.splice(hitSnake.body.length - BULLET_DAMAGE_SEGMENTS, BULLET_DAMAGE_SEGMENTS)
               const foodPos = new Set(game.food.map(f => `${f.x},${f.y}`))
               const alivePos = new Set()
               for (const s of Object.values(game.snakes)) {
@@ -1032,4 +1061,6 @@ module.exports = {
   updatePauseSpeed,
   endGameNow,
   endGame,
+  setTutorialStep,
+  finishTutorial,
 }

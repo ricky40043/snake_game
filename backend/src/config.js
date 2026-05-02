@@ -23,4 +23,5 @@ module.exports = {
   attackUnlockRemaining: 0,     // seconds remaining when attack unlocks (0 = always)
   wallDeath: true,              // wall collision kills snake
   boostEnabled: false,          // boost (2× speed, costs HP) off by default
+  tutorialEnabled: false,       // pre-game tutorial off by default
 }

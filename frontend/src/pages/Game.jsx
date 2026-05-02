@@ -14,6 +14,392 @@ const DIR_MAP = {
   ArrowRight: 'RIGHT', d: 'RIGHT', D: 'RIGHT',
 }
 
+function TutorialDemoCanvas({ demo, color, isTimed, wallDeath }) {
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    let rafId
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect()
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr))
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr))
+    }
+
+    function clear(w, h) {
+      ctx.fillStyle = '#0d1117'
+      ctx.fillRect(0, 0, w, h)
+    }
+
+    function grid(tile) {
+      ctx.strokeStyle = '#263241'
+      ctx.lineWidth = 1
+      for (let i = 0; i <= 6; i++) {
+        ctx.beginPath()
+        ctx.moveTo(i * tile, 0)
+        ctx.lineTo(i * tile, tile * 6)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(0, i * tile)
+        ctx.lineTo(tile * 6, i * tile)
+        ctx.stroke()
+      }
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath()
+      if (ctx.roundRect) ctx.roundRect(x, y, w, h, r)
+      else ctx.rect(x, y, w, h)
+    }
+
+    function segment(tile, x, y, fill, alpha = 1, scale = 1, stroke = null) {
+      const pad = tile * 0.12
+      const size = (tile - pad * 2) * scale
+      const px = x * tile + tile / 2 - size / 2
+      const py = y * tile + tile / 2 - size / 2
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = fill
+      roundRect(px, py, size, size, Math.max(4, tile * 0.14))
+      ctx.fill()
+      if (stroke) {
+        ctx.strokeStyle = stroke
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
+
+    function snake(tile, body, fill = color, alpha = 1, headStroke = null) {
+      body.forEach((p, i) => segment(tile, p.x, p.y, fill, alpha * (i === 0 ? 1 : 0.82), i === 0 ? 1 : 0.94, i === 0 ? headStroke : null))
+    }
+
+    function food(tile, x, y, pulse = 0) {
+      const r = tile * (0.22 + pulse * 0.05)
+      ctx.save()
+      ctx.shadowColor = '#f87171'
+      ctx.shadowBlur = 12
+      ctx.fillStyle = '#f87171'
+      ctx.beginPath()
+      ctx.arc(x * tile + tile / 2, y * tile + tile / 2, r, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+
+    function corpse(tile, points, alpha = 0.75) {
+      points.forEach((p) => {
+        ctx.save()
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = '#c8a06e'
+        ctx.beginPath()
+        ctx.arc(p.x * tile + tile / 2, p.y * tile + tile / 2, tile * 0.22, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      })
+    }
+
+    function bullet(tile, x, y, dx = 1) {
+      ctx.save()
+      ctx.translate(x * tile + tile / 2, y * tile + tile / 2)
+      if (dx < 0) ctx.rotate(Math.PI)
+      ctx.shadowColor = '#ef4444'
+      ctx.shadowBlur = 14
+      ctx.fillStyle = '#ef4444'
+      ctx.beginPath()
+      ctx.ellipse(0, 0, tile * 0.34, tile * 0.13, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.shadowBlur = 0
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'
+      ctx.beginPath()
+      ctx.ellipse(0, 0, tile * 0.18, tile * 0.06, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+
+    function label(tile, text, x, y, fill = '#facc15') {
+      ctx.save()
+      ctx.font = `700 ${Math.max(12, tile * 0.28)}px system-ui, sans-serif`
+      ctx.fillStyle = fill
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(text, x * tile + tile / 2, y * tile + tile / 2)
+      ctx.restore()
+    }
+
+    function drawFrame(now) {
+      const dpr = window.devicePixelRatio || 1
+      const w = canvas.width / dpr
+      const h = canvas.height / dpr
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      clear(w, h)
+      const tile = Math.min(w, h) / 6
+      grid(tile)
+
+      const loop = (now % 3600) / 3600
+      const pulse = (Math.sin(now / 180) + 1) / 2
+      const enemy = '#3b82f6'
+
+      if (demo === 'color') {
+        snake(tile, [{ x: 1, y: 2 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }], color, 1, '#ffffff')
+        segment(tile, 1, 2, color, 0.55, 1.25 + pulse * 0.12, '#ffffff')
+        label(tile, '你', 1, 1, '#ffffff')
+      } else if (demo === 'food') {
+        const x = Math.min(3, 1 + loop * 3.8)
+        const ate = loop > 0.62
+        snake(tile, ate
+          ? [{ x: 4, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 2 }, { x: 1, y: 2 }]
+          : [{ x, y: 2 }, { x: x - 1, y: 2 }, { x: x - 2, y: 2 }],
+        color, 1, '#ffffff')
+        if (!ate) food(tile, 4, 2, pulse)
+        if (ate) label(tile, '+10', 4, 1, '#facc15')
+      } else if (demo === 'move') {
+        const x = 1 + loop * 3.5
+        snake(tile, [{ x, y: 2 }, { x: x - 1, y: 2 }, { x: x - 2, y: 2 }], color, 1, '#ffffff')
+        label(tile, '→', 4, 1, '#93c5fd')
+      } else if (demo === 'attack') {
+        const fired = loop > 0.18
+        const hit = loop > 0.68
+        const shooter = fired
+          ? [{ x: 1, y: 2 }, { x: 0, y: 2 }, { x: -1, y: 2 }]
+          : [{ x: 1, y: 2 }, { x: 0, y: 2 }, { x: -1, y: 2 }, { x: -2, y: 2 }]
+        snake(tile, shooter, color, 1, '#ffffff')
+        if (!hit) {
+          snake(tile, [{ x: 4, y: 2 }, { x: 4, y: 3 }, { x: 4, y: 4 }, { x: 5, y: 4 }], enemy, 1, null)
+          if (fired) bullet(tile, 1.4 + (loop - 0.18) / 0.5 * 2.3, 2)
+          if (fired) label(tile, '自己 -1', 1, 0, '#facc15')
+        } else {
+          corpse(tile, [{ x: 4, y: 2 }, { x: 4, y: 3 }, { x: 4, y: 4 }, { x: 5, y: 4 }], 0.75)
+          label(tile, '命中 -3', 4, 1, '#f87171')
+          label(tile, '死亡', 4, 5, '#f87171')
+        }
+      } else if (demo === 'corpse') {
+        if (loop < 0.35) {
+          snake(tile, [{ x: 2, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }], color, 1, '#ffffff')
+          label(tile, '死亡', 2, 1, '#f87171')
+        } else {
+          corpse(tile, [{ x: 2, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }], 0.35 + (1 - loop) * 0.55)
+          const eaterX = Math.min(3.2, 0.5 + (loop - 0.35) * 3.5)
+          snake(tile, [{ x: eaterX, y: 3 }, { x: eaterX - 1, y: 3 }, { x: eaterX - 2, y: 3 }], enemy, 1, '#ffffff')
+          label(tile, '10s', 4, 1, '#c8a06e')
+        }
+      } else if (demo === 'respawn') {
+        if (!isTimed) {
+          corpse(tile, [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }], 0.7)
+          snake(tile, [{ x: 2, y: 4 }, { x: 1, y: 4 }, { x: 0, y: 4 }], enemy, 1, '#ffffff')
+          label(tile, '最後存活', 3, 1, '#facc15')
+        } else if (loop < 0.34) {
+          corpse(tile, [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }], 0.65)
+          label(tile, '復活 10', 3, 4, '#facc15')
+        } else if (loop < 0.66) {
+          snake(tile, [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }], color, 0.35 + pulse * 0.25, '#ffffff')
+          label(tile, '出生預覽', 3, 1, '#93c5fd')
+        } else {
+          snake(tile, [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }], color, 1, '#93c5fd')
+          segment(tile, 3, 3, color, 0.25, 1.35 + pulse * 0.12, '#93c5fd')
+          label(tile, '無敵 5s', 3, 1, '#93c5fd')
+        }
+      } else if (demo === 'wall') {
+        ctx.fillStyle = '#7f1d1d'
+        ctx.fillRect(tile * 5, 0, tile, tile * 6)
+        const x = 2 + Math.min(loop / 0.55, 1) * 3
+        if (wallDeath && loop > 0.58) {
+          corpse(tile, [{ x: 5, y: 2 }, { x: 4, y: 2 }, { x: 3, y: 2 }], 0.75)
+          label(tile, '撞牆死亡', 3, 4, '#f87171')
+        } else {
+          const bounced = !wallDeath && loop > 0.58
+          snake(tile, bounced
+            ? [{ x: 4, y: 3 }, { x: 4, y: 2 }, { x: 3, y: 2 }]
+            : [{ x, y: 2 }, { x: x - 1, y: 2 }, { x: x - 2, y: 2 }],
+          color, 1, '#ffffff')
+          if (bounced) label(tile, '轉向', 4, 1, '#93c5fd')
+        }
+      } else if (demo === 'boost') {
+        const x = 0.8 + loop * 4
+        const body = loop > 0.5
+          ? [{ x, y: 3 }, { x: x - 1, y: 3 }, { x: x - 2, y: 3 }]
+          : [{ x, y: 3 }, { x: x - 1, y: 3 }, { x: x - 2, y: 3 }, { x: x - 3, y: 3 }]
+        snake(tile, body, color, 1, '#facc15')
+        segment(tile, x, 3, color, 0.35, 1.3 + pulse * 0.1, '#facc15')
+        label(tile, loop > 0.5 ? '-1' : '加速', 3, 1, '#facc15')
+      }
+
+      rafId = requestAnimationFrame(drawFrame)
+    }
+
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+    rafId = requestAnimationFrame(drawFrame)
+    return () => {
+      cancelAnimationFrame(rafId)
+      ro.disconnect()
+    }
+  }, [demo, color, isTimed, wallDeath])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="block w-full h-full rounded-xl bg-[#0d1117]"
+      style={{ imageRendering: 'pixelated' }}
+    />
+  )
+}
+
+function TutorialOverlay({ state, isTimed, isHost, onPrev, onNext, onFinish }) {
+  const attackOn = state.settings?.attackEnabled !== false
+  const boostOn = state.settings?.boostEnabled === true
+  const wallDeath = state.settings?.wallDeath !== false
+  const attackWindow = state.settings?.attackUnlockRemaining || 0
+  const myColor = state.snakes[0]?.color || '#22c55e'
+  const attackText = !attackOn
+    ? '本局沒有攻擊射擊'
+    : isTimed && attackWindow > 0 && attackWindow < (state.duration || 180)
+      ? `只在最後 ${formatTime(attackWindow)} 可以攻擊`
+      : '全時間可以攻擊'
+
+  const steps = [
+    {
+      title: '辨認自己的顏色',
+      text: '你的顏色會出現在上方小蛇、地圖蛇頭外框，以及玩家列表圓點。',
+      stat: '顏色 = 身分',
+      demo: 'color',
+    },
+    {
+      title: '長度就是血量',
+      text: '蛇每一格都是血量。吃紅色食物會加分並增加長度，分數顯示在右上角。',
+      stat: '吃食物 +10分',
+      demo: 'food',
+    },
+    {
+      title: '移動控制',
+      text: '方向鍵或 WASD 控制移動，手機用下方方向鍵。教學結束倒數後才會開始移動。',
+      stat: '鍵盤 / 手機皆可',
+      demo: 'move',
+    },
+    {
+      title: '攻擊規則',
+      text: attackOn
+        ? `按 F 或手機 ⚡ 發射子彈。攻擊會先扣自己 1 格尾巴，打中別人扣 3 格血；${attackText}。`
+        : attackText,
+      stat: attackOn ? '自己 -1 / 命中 -3' : '攻擊關閉',
+      demo: 'attack',
+    },
+    {
+      title: '死亡與屍體',
+      text: '死亡後身體會變成屍體食物，屍體會存在 10 秒，其他玩家可以吃到。',
+      stat: '屍體 10 秒',
+      demo: 'corpse',
+    },
+    {
+      title: isTimed ? '復活與無敵' : '存活模式勝負',
+      text: isTimed
+        ? '計時模式死亡後 10 秒復活，復活前 3 秒會看到出生預覽，復活後有 5 秒無敵。'
+        : '存活模式死亡後不復活，最後存活的玩家獲勝。',
+      stat: isTimed ? '10 秒復活 / 5 秒無敵' : '最後存活獲勝',
+      demo: 'respawn',
+    },
+    {
+      title: '碰牆規則',
+      text: wallDeath ? '本局碰牆會死亡。' : '本局碰牆不會直接死亡，會隨機轉向。',
+      stat: wallDeath ? '碰牆死亡' : '碰牆轉向',
+      demo: 'wall',
+    },
+    {
+      title: '加速模式',
+      text: boostOn ? '加速模式已啟用：按 E 或手機 🚀 切換，加速時移動更快，每 2 秒扣 1 格尾巴。' : '本局沒有加速模式。',
+      stat: boostOn ? '每 2 秒 -1 格' : '加速關閉',
+      demo: 'boost',
+    },
+  ]
+  const step = Math.max(0, Math.min(steps.length - 1, state.tutorialStep || 0))
+  const current = steps[step]
+  const isLast = step === steps.length - 1
+
+  return (
+    <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3">
+      <div className="w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-2xl overflow-hidden shadow-2xl">
+        <div className="px-5 py-4 border-b border-[#30363d] flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-bold text-white">規則教學試玩</div>
+            <div className="text-xs text-gray-500 mt-1">{isTimed ? '計時模式' : '存活模式'} · {attackText}</div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {state.snakes.slice(0, 4).map((s) => (
+              <span key={s.playerId} className="w-3 h-3 rounded-full" style={{ background: s.color }} />
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.1fr] gap-4 p-5">
+          <div className="aspect-square bg-[#0d1117] border border-[#30363d] rounded-xl overflow-hidden">
+            <TutorialDemoCanvas
+              key={step}
+              demo={current.demo}
+              color={myColor}
+              isTimed={isTimed}
+              wallDeath={wallDeath}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3">
+                <div className="text-gray-500">進度</div>
+                <div className="text-green-400 font-mono text-lg font-bold">{step + 1}/{steps.length}</div>
+              </div>
+              <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3">
+                <div className="text-gray-500">重點</div>
+                <div className="text-yellow-400 font-mono text-lg font-bold truncate">{current.stat}</div>
+              </div>
+            </div>
+
+            <div key={step} className="tutorial-card bg-[#0d1117] border border-[#30363d] rounded-xl p-4 min-h-[150px]">
+              <div className="text-xl font-bold text-white mb-3">{current.title}</div>
+              <div className="text-sm text-gray-300 leading-relaxed">{current.text}</div>
+            </div>
+
+            <div className="flex gap-1.5">
+              {steps.map((s, i) => (
+                <div
+                  key={s.title}
+                  className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-green-400' : 'bg-[#30363d]'}`}
+                />
+              ))}
+            </div>
+
+            <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+              <div className="text-xs text-gray-500">
+                {isHost ? '主持人控制下一步，所有玩家同步看到同一頁。' : '等待房主切換下一個規則。'}
+              </div>
+              {isHost && (
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={onPrev}
+                    disabled={step === 0}
+                    className="bg-[#21262d] hover:bg-[#30363d] disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 font-semibold px-4 py-2.5 rounded-xl transition"
+                  >
+                    上一步
+                  </button>
+                  <button
+                    onClick={isLast ? onFinish : onNext}
+                    className="bg-green-500 hover:bg-green-400 text-black font-bold px-5 py-2.5 rounded-xl transition"
+                  >
+                    {isLast ? '開始倒數' : '下一步'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function formatTime(sec) {
   if (sec === null || sec === undefined) return ''
   const m = Math.floor(sec / 60)
@@ -39,7 +425,6 @@ export default function Game() {
   const [params] = useSearchParams()
   const roomId = params.get('room')
   const { state } = useGame()
-  const lastDirRef = useRef(null)
   const [followMe, setFollowMe] = useState(true)
 
   useEffect(() => {
@@ -106,11 +491,9 @@ export default function Game() {
     const dir = DIR_MAP[e.key]
     if (!dir) return
     e.preventDefault()
-    if (state.startCountdown) return  // wait for countdown
-    if (dir === lastDirRef.current) return
-    lastDirRef.current = dir
+    if (state.startCountdown || state.tutorialActive) return  // wait for countdown/tutorial
     socket.emit('change_direction', { roomId, direction: dir })
-  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown, state.boostEnabled, state.attackUnlocked])
+  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown, state.tutorialActive, state.boostEnabled, state.attackUnlocked])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -118,9 +501,7 @@ export default function Game() {
   }, [handleKey])
 
   function sendDir(dir) {
-    if (state.startCountdown) return
-    if (dir === lastDirRef.current) return
-    lastDirRef.current = dir
+    if (state.startCountdown || state.tutorialActive) return
     socket.emit('change_direction', { roomId, direction: dir })
   }
 
@@ -135,14 +516,6 @@ export default function Game() {
   const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
   const isAlive = mySnake?.alive ?? true
 
-  // Reset lastDir when this player respawns (false → true) to fix "key doesn't respond" bug
-  const prevIsAliveRef = useRef(true)
-  useEffect(() => {
-    if (!prevIsAliveRef.current && isAlive) {
-      lastDirRef.current = null
-    }
-    prevIsAliveRef.current = isAlive
-  }, [isAlive])
   // ── Death / revenge kill toasts ──────────────────────────────────────────
   const [deathMsg, setDeathMsg] = useState(null)
   const [revengeMsg, setRevengeMsg] = useState(null)
@@ -182,6 +555,16 @@ export default function Game() {
   const invincibleSecsLeft = myInvincibleUntil && myInvincibleUntil > Date.now()
     ? Math.ceil((myInvincibleUntil - Date.now()) / 1000)
     : 0
+
+  function finishTutorial() {
+    socket.emit('finish_tutorial', { roomId })
+  }
+  function tutorialNext() {
+    socket.emit('tutorial_next', { roomId })
+  }
+  function tutorialPrev() {
+    socket.emit('tutorial_prev', { roomId })
+  }
 
   // ── Viewport / mobile camera ──────────────────────────────────────────────
   const VIEWPORT_SIZE = 20
@@ -232,6 +615,55 @@ export default function Game() {
         .countdown-ring {
           animation: countdown-ring 0.85s ease-out forwards;
         }
+        @keyframes tutorial-card-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes tutorial-pulse {
+          0%, 100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(255,255,255,0.7); }
+          50% { transform: scale(1.08); box-shadow: 0 0 0 5px rgba(255,255,255,0); }
+        }
+        @keyframes tutorial-move {
+          0% { transform: translateX(-130%); opacity: 0; }
+          30%, 70% { transform: translateX(0); opacity: 1; }
+          100% { transform: translateX(130%); opacity: 0; }
+        }
+        @keyframes tutorial-food {
+          0%, 100% { transform: scale(0.75); }
+          50% { transform: scale(1.15); }
+        }
+        @keyframes tutorial-bullet {
+          0% { transform: translate(-180%, -50%); opacity: 0; }
+          20%, 80% { opacity: 1; }
+          100% { transform: translate(180%, -50%); opacity: 0; }
+        }
+        @keyframes tutorial-fade {
+          0%, 30% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0.25; transform: scale(0.65); }
+        }
+        @keyframes tutorial-shield {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(147,197,253,0.8); }
+          50% { box-shadow: 0 0 18px 4px rgba(147,197,253,0.65); }
+        }
+        @keyframes tutorial-wall-hit {
+          0% { transform: translateX(-160%); }
+          55% { transform: translateX(0); filter: brightness(1); }
+          65%, 85% { transform: translateX(0) scale(1.1); filter: brightness(1.8); }
+          100% { transform: translateX(-40%) rotate(-18deg); opacity: 0.45; }
+        }
+        @keyframes tutorial-boost {
+          0%, 100% { transform: scale(0.9); box-shadow: 0 0 0 rgba(251,191,36,0); }
+          50% { transform: scale(1.08); box-shadow: 0 0 14px rgba(251,191,36,0.9); }
+        }
+        .tutorial-card { animation: tutorial-card-in 0.22s ease-out; }
+        .tutorial-pulse { animation: tutorial-pulse 1.2s ease-in-out infinite; }
+        .tutorial-move { animation: tutorial-move 1.8s ease-in-out infinite; }
+        .tutorial-food { animation: tutorial-food 1.1s ease-in-out infinite; }
+        .tutorial-bullet { animation: tutorial-bullet 1.25s linear infinite; }
+        .tutorial-fade { animation: tutorial-fade 2s ease-in-out infinite alternate; }
+        .tutorial-shield { animation: tutorial-shield 1s ease-in-out infinite; }
+        .tutorial-wall-hit { animation: tutorial-wall-hit 1.8s ease-in-out infinite; }
+        .tutorial-boost { animation: tutorial-boost 0.7s ease-in-out infinite; }
       `}</style>
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
@@ -491,6 +923,17 @@ export default function Game() {
                 isHost={state.isHost}
                 roomId={roomId}
                 mode={state.mode}
+              />
+            )}
+
+            {state.tutorialActive && (
+              <TutorialOverlay
+                state={state}
+                isTimed={isTimed}
+                isHost={state.isHost}
+                onPrev={tutorialPrev}
+                onNext={tutorialNext}
+                onFinish={finishTutorial}
               />
             )}
           </div>
