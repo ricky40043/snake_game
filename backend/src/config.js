@@ -16,8 +16,9 @@ module.exports = {
   gridSize: 20,
   tickMs: 120,
   foodCount: 3,
-  mode: 'classic',         // 'classic' | 'timed'
+  mode: 'timed',           // 'classic' | 'timed'
   duration: 180,           // seconds (timed mode)
+  timedWinCondition: 'length', // 'length' | 'score'
 
   attackEnabled: false,         // shooting off by default
   attackUnlockRemaining: 0,     // seconds remaining when attack unlocks (0 = always)

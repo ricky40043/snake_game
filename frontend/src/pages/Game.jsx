@@ -607,6 +607,7 @@ export default function Game() {
   }, [state.revengeKill])
 
   const isTimed = state.mode === 'timed'
+  const timedByScore = state.settings?.timedWinCondition === 'score'
   const isRespawning = isTimed && !isAlive && state.respawning?.[state.myPlayerId] !== undefined
   const respawnCountdown = isRespawning ? (state.respawning[state.myPlayerId] ?? 0) : 0
   const alivePlayers = state.snakes.filter((s) => s.alive)
@@ -986,6 +987,7 @@ export default function Game() {
                 isHost={state.isHost}
                 roomId={roomId}
                 mode={state.mode}
+                timedWinCondition={state.settings?.timedWinCondition || 'length'}
               />
             )}
 
@@ -1006,13 +1008,22 @@ export default function Game() {
         <div className="hidden sm:flex flex-col gap-2 w-36 shrink-0">
           <div className="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden">
             <div className="px-3 py-2 text-xs text-gray-500 uppercase tracking-wider border-b border-[#21262d]">
-              {isTimed ? '長度排行' : '玩家'}
+              {isTimed ? (timedByScore ? '分數排行' : '長度排行') : '玩家'}
             </div>
             {state.snakes
               .slice()
-              .sort((a, b) => (isTimed ? b.body.length - a.body.length : b.score - a.score))
+              .sort((a, b) => {
+                if (isTimed) {
+                  if (timedByScore) {
+                    if (b.score !== a.score) return b.score - a.score
+                    return b.body.length - a.body.length
+                  }
+                  if (b.body.length !== a.body.length) return b.body.length - a.body.length
+                  return b.score - a.score
+                }
+                return b.score - a.score
+              })
               .map((s) => {
-                const respawnSec = state.respawning?.[s.playerId]
                 return (
                   <div
                     key={s.playerId}
@@ -1022,7 +1033,7 @@ export default function Game() {
                     <span className="flex-1 truncate">{s.name}{s.playerId === state.myPlayerId ? ' ★' : ''}</span>
                     <span className={`font-mono ${isTimed ? 'text-green-400' : 'text-yellow-500'}`}>
                       {isTimed
-                        ? (respawnSec !== undefined ? `⟳${respawnSec}s` : displayLen(s))
+                        ? (timedByScore ? `${s.score}分` : displayLen(s))
                         : s.score}
                     </span>
                   </div>

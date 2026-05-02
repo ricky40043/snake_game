@@ -52,6 +52,7 @@ function createRoom(hostId) {
       tickMs: config.tickMs,
       mode: config.mode,
       duration: config.duration,
+      timedWinCondition: config.timedWinCondition,
       foodCount: config.foodCount,
       maxPlayers: config.defaultMaxPlayers,
       attackEnabled: config.attackEnabled,

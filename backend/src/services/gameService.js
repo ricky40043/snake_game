@@ -173,7 +173,7 @@ function startGame(io, roomId) {
   const room = roomService.getRoom(roomId)
   if (!room) return
 
-  const { gridSize, tickMs, mode, duration, foodCount, attackEnabled, attackUnlockRemaining, wallDeath, boostEnabled, tutorialEnabled } = room.settings
+  const { gridSize, tickMs, mode, duration, timedWinCondition, foodCount, attackEnabled, attackUnlockRemaining, wallDeath, boostEnabled, tutorialEnabled } = room.settings
   const alivePlayers = [...room.players.values()].filter((p) => p.isOnline)
   const spawnConfigs = getSpawnConfigs(gridSize)
 
@@ -206,6 +206,7 @@ function startGame(io, roomId) {
     tickMs,
     mode: mode || 'classic',
     duration: (duration || 180) * 1000, // store as ms
+    timedWinCondition: timedWinCondition === 'score' ? 'score' : 'length',
     foodCount: gameFoodCount,
     tick: 0,
     snakes,
@@ -906,9 +907,17 @@ function endGame(io, roomId) {
 
     if (rankings.length > 0) winnerId = rankings[0].playerId
   } else {
-    // Timed: rank all by snake length (alive use body.length; dead use lengthAtDeath)
+    // Timed: rank by configured timed win condition.
     const effectiveLen = (s) => s.alive ? s.body.length : (s.lengthAtDeath || 0)
-    const allSnakes = Object.values(game.snakes).sort((a, b) => effectiveLen(b) - effectiveLen(a))
+    const timedWinCondition = game.timedWinCondition === 'score' ? 'score' : 'length'
+    const allSnakes = Object.values(game.snakes).sort((a, b) => {
+      if (timedWinCondition === 'score') {
+        if (b.score !== a.score) return b.score - a.score
+        return effectiveLen(b) - effectiveLen(a)
+      }
+      if (effectiveLen(b) !== effectiveLen(a)) return effectiveLen(b) - effectiveLen(a)
+      return b.score - a.score
+    })
     rankings = allSnakes.map((snake, i) => ({
       playerId: snake.playerId,
       name: snake.name,
@@ -927,6 +936,7 @@ function endGame(io, roomId) {
     winnerName: winner ? winner.name : null,
     rankings,
     mode: game.mode,
+    timedWinCondition: game.timedWinCondition === 'score' ? 'score' : 'length',
   })
 
   roomService.scheduleCleanup(roomId)

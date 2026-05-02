@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { socket } from '../socket'
 
-export default function GameOver({ winnerId, winnerName, rankings, myPlayerId, isHost, roomId, mode }) {
+export default function GameOver({ winnerId, winnerName, rankings, myPlayerId, isHost, roomId, mode, timedWinCondition = 'length' }) {
   const navigate = useNavigate()
   const isWinner = winnerId === myPlayerId
   const winnerColor = rankings.find((r) => r.playerId === winnerId)?.color || '#fff'
   const isTimed = mode === 'timed'
+  const timedByScore = timedWinCondition === 'score'
 
   function handlePlayAgain() {
     socket.emit('play_again', { roomId })
@@ -27,7 +28,11 @@ export default function GameOver({ winnerId, winnerName, rankings, myPlayerId, i
               <div className="text-4xl mb-2">{isTimed ? '⏱' : '🏆'}</div>
               <div className="text-2xl font-bold" style={{ color: winnerColor }}>{winnerName}</div>
               <div className="text-gray-400 text-sm mt-1">
-                {isTimed ? `以 ${rankings[0]?.length ?? 0} 格長度獲勝！` : '存活至最後！'}
+                {isTimed
+                  ? timedByScore
+                    ? `以 ${rankings[0]?.score ?? 0} 分獲勝！`
+                    : `以 ${rankings[0]?.length ?? 0} 格長度獲勝！`
+                  : '存活至最後！'}
               </div>
               {isWinner && (
                 <div className="mt-2 text-green-400 font-semibold animate-bounce">你贏了！🎉</div>
@@ -55,7 +60,7 @@ export default function GameOver({ winnerId, winnerName, rankings, myPlayerId, i
         <div className="bg-[#0d1117] rounded-xl overflow-hidden mb-5">
           <div className="px-3 py-2 text-xs text-gray-500 uppercase tracking-wider border-b border-[#21262d] flex items-center justify-between">
             <span>排行榜</span>
-            <span className="text-gray-600 normal-case">{isTimed ? '以長度排名' : '以存活＋長度排名'}</span>
+            <span className="text-gray-600 normal-case">{isTimed ? (timedByScore ? '以分數排名' : '以長度排名') : '以存活＋長度排名'}</span>
           </div>
           {rankings.map((r) => (
             <div

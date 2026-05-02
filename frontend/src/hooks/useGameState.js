@@ -13,7 +13,7 @@ const initialState = {
 
   // Game
   gridSize: 20,
-  mode: 'classic',
+  mode: 'timed',
   duration: 180,
   snakes: [],
   food: [],
@@ -89,7 +89,7 @@ export function useGameState() {
         ...prev,
         status: 'playing',
         gridSize,
-        mode: mode || 'classic',
+        mode: mode || 'timed',
         duration: duration || 180,
         snakes,
         food,
@@ -186,7 +186,7 @@ export function useGameState() {
       }))
     })
 
-    socket.on('game_over', ({ winnerId, winnerName, rankings }) => {
+    socket.on('game_over', ({ winnerId, winnerName, rankings, timedWinCondition }) => {
       setState((prev) => ({
         ...prev,
         status: 'finished',
@@ -194,6 +194,7 @@ export function useGameState() {
         winnerId,
         winnerName,
         rankings,
+        settings: timedWinCondition ? { ...prev.settings, timedWinCondition } : prev.settings,
         respawnPreview: null,
         tutorialActive: false,
         tutorialStep: 0,

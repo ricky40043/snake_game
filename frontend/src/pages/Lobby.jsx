@@ -113,7 +113,8 @@ export default function Lobby() {
   function setMode(mode) { updateSettings('mode', mode) }
 
   const settings = state.settings || {}
-  const currentMode = settings.mode || 'classic'
+  const currentMode = settings.mode || 'timed'
+  const timedWinCondition = settings.timedWinCondition || 'length'
   const onlinePlayers = state.players.filter((p) => p.isOnline)
   const canStart = state.isHost && onlinePlayers.length >= 1
 
@@ -214,7 +215,7 @@ export default function Lobby() {
                 >
                   <span className="text-xl">⏱</span>
                   <span>計時模式</span>
-                  <span className={`text-xs font-normal ${currentMode === 'timed' ? 'text-black/60' : 'text-gray-600'}`}>最長蛇獲勝</span>
+                  <span className={`text-xs font-normal ${currentMode === 'timed' ? 'text-black/60' : 'text-gray-600'}`}>{timedWinCondition === 'score' ? '最高分獲勝' : '最長蛇獲勝'}</span>
                 </button>
               </div>
               <p className="text-xs text-gray-600 mt-2 text-center">⚡ 所有模式均可按 F 鍵（手機：⚡鈕）發射子彈攻擊</p>
@@ -239,7 +240,7 @@ export default function Lobby() {
                   <span>30 秒</span>
                   <span>10 分鐘</span>
                 </div>
-                <p className="text-xs text-gray-600 mt-2 text-center">死亡後 10 秒復活，時間到以蛇長度排名</p>
+                <p className="text-xs text-gray-600 mt-2 text-center">死亡後 10 秒復活，時間到以{timedWinCondition === 'score' ? '分數' : '蛇長度'}排名</p>
               </div>
             )}
 
@@ -330,6 +331,38 @@ export default function Lobby() {
                       <span className="block text-xs text-gray-600 mt-0.5">開始後先顯示規則與操作導覽，房主確認後才進入倒數</span>
                     </span>
                   </label>
+
+                  {currentMode === 'timed' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-gray-300">計時模式勝利方式</span>
+                        <span className="text-xs font-mono font-bold text-orange-400">{timedWinCondition === 'score' ? '分數優先' : '長度優先'}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          disabled={!state.isHost}
+                          onClick={() => updateSettings('timedWinCondition', 'length')}
+                          className={`py-2.5 rounded-xl text-sm font-semibold transition disabled:cursor-default
+                            ${timedWinCondition === 'length' ? 'bg-orange-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
+                        >
+                          最後長度
+                        </button>
+                        <button
+                          disabled={!state.isHost}
+                          onClick={() => updateSettings('timedWinCondition', 'score')}
+                          className={`py-2.5 rounded-xl text-sm font-semibold transition disabled:cursor-default
+                            ${timedWinCondition === 'score' ? 'bg-orange-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
+                        >
+                          最後分數
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        {timedWinCondition === 'score'
+                          ? '時間到後以分數高低排名；同分時再比最後長度。'
+                          : '時間到後以最後長度排名；同長度時再比分數。'}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Food count */}
                   <div>

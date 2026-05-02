@@ -233,6 +233,7 @@ function registerRoomHandlers(io, socket, socketMap) {
     if (t >= 60 && t <= 500) room.settings.tickMs = t
     if (['classic', 'timed'].includes(settings.mode)) room.settings.mode = settings.mode
     if (d >= 30 && d <= 600) room.settings.duration = d
+    if (['length', 'score'].includes(settings.timedWinCondition)) room.settings.timedWinCondition = settings.timedWinCondition
     if (fc >= 1 && fc <= 10) room.settings.foodCount = fc
     if (typeof settings.attackEnabled === 'boolean') room.settings.attackEnabled = settings.attackEnabled
     const unlockRem = Math.round(Number(settings.attackUnlockRemaining))
