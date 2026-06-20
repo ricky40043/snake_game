@@ -1,5 +1,6 @@
 const config = require('../config')
 const roomService = require('./roomService')
+const stats = require('./stats')
 
 const OPPOSITE = { UP: 'DOWN', DOWN: 'UP', LEFT: 'RIGHT', RIGHT: 'LEFT' }
 const DIR_DELTA = {
@@ -231,6 +232,8 @@ function startGame(io, roomId) {
     lastKilledBy: {},    // victimId → killerId (for revenge detection)
   }
   room.status = 'playing'
+  room.game.statStartAt = Date.now()
+  stats.track('game_start', { room: roomId, players: alivePlayers.length, meta: { mode: room.game.mode } })
 
   const attackUnlockedNow = room.game.attackEnabled &&
     (room.game.mode !== 'timed' || room.game.attackUnlockRemaining === 0)
@@ -937,6 +940,13 @@ function endGame(io, roomId) {
     rankings,
     mode: game.mode,
     timedWinCondition: game.timedWinCondition === 'score' ? 'score' : 'length',
+  })
+
+  stats.track('game_end', {
+    room: roomId,
+    players: rankings.length,
+    duration_ms: game.statStartAt ? Date.now() - game.statStartAt : null,
+    meta: { mode: game.mode, winner: winner ? winner.name : null },
   })
 
   roomService.scheduleCleanup(roomId)

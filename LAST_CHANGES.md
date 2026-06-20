@@ -1,3 +1,18 @@
+## 最後一次修改（2026-06-20）
+
+### 改了什麼
+- 新增遊戲數據上報：每場遊戲開始（game_start）與結束（game_end）會送一筆事件到共用的 game-stats 收集服務
+- game_start 記錄房間、開局人數、模式；game_end 記錄房間、人數、本局時長、模式與冠軍名
+- 上報為 fire-and-forget（背景送出、2 秒逾時、任何錯誤一律吞掉），完全不影響遊戲流程
+
+### 為什麼改
+- 原本貪食蛇是純記憶體運行、不留任何資料，無法得知有沒有人玩、玩多少
+- 改用輕量事件上報，集中到一個共用後台（admin-games.ricky-nova.com）看所有遊戲的使用數據，不必為每個遊戲各做一套後台
+
+### 影響的檔案
+- `backend/src/services/stats.js` — 新增，fire-and-forget 上報模組（可用 STATS_URL / STATS_GAME 環境變數覆寫）
+- `backend/src/services/gameService.js` — startGame 記 statStartAt 並送 game_start；endGame 送 game_end（含時長）
+
 ## 最後一次修改（2026-05-02）
 
 ### 改了什麼
