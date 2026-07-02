@@ -17,6 +17,13 @@ let lastDirection = null
 let lastDirectionAt = 0
 const DUPLICATE_DIRECTION_GUARD_MS = 70
 
+function notifyLocalDirection(direction) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('snake_local_direction', {
+    detail: { direction, ts: Date.now() },
+  }))
+}
+
 socket.emit = (eventName, payload, ...args) => {
   if (eventName === 'change_direction' && payload?.direction) {
     const now = performance.now()
@@ -29,6 +36,10 @@ socket.emit = (eventName, payload, ...args) => {
     lastDirection = direction
     lastDirectionAt = now
     payload = { ...payload, direction }
+
+    // Optimistic local feedback: the client can draw my next grid step immediately.
+    // The server is still authoritative; the next game_tick will correct the view.
+    notifyLocalDirection(direction)
   }
 
   return rawEmit(eventName, payload, ...args)
