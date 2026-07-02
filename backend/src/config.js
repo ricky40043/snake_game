@@ -14,7 +14,7 @@ module.exports = {
   minPlayersToStart: 1,
 
   gridSize: 20,
-  tickMs: 120,
+  tickMs: 100,             // 10 ticks/sec; lower input latency than 120ms
   foodCount: 3,
   mode: 'timed',           // 'classic' | 'timed'
   duration: 180,           // seconds (timed mode)
