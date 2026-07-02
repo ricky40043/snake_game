@@ -66,6 +66,7 @@ function moveSnakeOneStep(snake, queuedDirections, gridSize) {
 
 export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId, viewport, previewSnake }) {
   const canvasRef = useRef(null)
+  const drawRef = useRef(null)
   const localSnakeRef = useRef(null)
   const localDirectionsRef = useRef([])
   const localTimerRef = useRef(null)
@@ -84,6 +85,7 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const size = canvas.width
+    if (!size) return
 
     const renderCols = viewport ? viewport.size : gridSize
     const renderRows = viewport ? viewport.size : gridSize
@@ -351,6 +353,10 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
     }
   }, [snakes, food, bullets, gridSize, myPlayerId, viewport, previewSnake])
 
+  useEffect(() => {
+    drawRef.current = draw
+  }, [draw])
+
   const runLocalTick = useCallback(() => {
     stopLocalTimer()
     if (!localSnakeRef.current || localDirectionsRef.current.length === 0) return
@@ -358,8 +364,8 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
 
     localSnakeRef.current = moveSnakeOneStep(localSnakeRef.current, localDirectionsRef.current, gridSize)
     localPredictedStepsRef.current += 1
-    draw()
-  }, [draw, gridSize, stopLocalTimer])
+    drawRef.current?.()
+  }, [gridSize, stopLocalTimer])
 
   const scheduleLocalTick = useCallback(() => {
     if (localTimerRef.current) return
@@ -379,21 +385,26 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return undefined
 
     const container = canvas.parentElement
+    if (!container) return undefined
+
     const resize = () => {
-      const size = Math.min(container.clientWidth, container.clientHeight)
-      canvas.width = size
-      canvas.height = size
-      draw()
+      const size = Math.floor(Math.min(container.clientWidth, container.clientHeight))
+      if (!size) return
+      if (canvas.width !== size || canvas.height !== size) {
+        canvas.width = size
+        canvas.height = size
+      }
+      drawRef.current?.()
     }
 
     const ro = new ResizeObserver(resize)
     ro.observe(container)
     resize()
     return () => ro.disconnect()
-  }, [draw])
+  }, [])
 
   useEffect(() => {
     const onLocalDirection = (e) => {
@@ -418,15 +429,18 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
     return () => window.removeEventListener('snake_local_direction', onLocalDirection)
   }, [myPlayerId, scheduleLocalTick, snakes])
 
-  const hasInvincibleSnake = snakes.some((s) => s.invincibleUntil)
+  const hasActiveInvincibleSnake = snakes.some((s) => s.invincibleUntil && s.invincibleUntil > Date.now())
   const hasBoostingSnake = snakes.some((s) => s.boostActive)
   useEffect(() => {
-    if (!previewSnake && !hasInvincibleSnake && !hasBoostingSnake) return
+    if (!previewSnake && !hasActiveInvincibleSnake && !hasBoostingSnake) return undefined
     let rafId
-    const animate = () => { draw(); rafId = requestAnimationFrame(animate) }
+    const animate = () => {
+      drawRef.current?.()
+      rafId = requestAnimationFrame(animate)
+    }
     rafId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(rafId)
-  }, [previewSnake, hasInvincibleSnake, hasBoostingSnake, draw])
+  }, [previewSnake, hasActiveInvincibleSnake, hasBoostingSnake])
 
   return (
     <canvas
