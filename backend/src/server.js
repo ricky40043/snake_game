@@ -15,7 +15,9 @@ const io = new Server(server, {
     origin: config.corsOrigins,
     methods: ['GET', 'POST'],
   },
-  transports: ['websocket', 'polling'],
+  // Real-time game input should not silently fall back to HTTP polling.
+  // If WebSocket is unavailable, fail fast instead of feeling delayed.
+  transports: ['websocket'],
 })
 
 app.use(cors({ origin: config.corsOrigins }))
