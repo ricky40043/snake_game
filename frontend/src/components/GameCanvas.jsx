@@ -2,7 +2,8 @@ import { useRef, useEffect, useCallback } from 'react'
 
 const GRID_COLOR = '#2a2a3f'
 const BG_COLOR = '#11111a'
-const LOCAL_PREDICTION_MS = 180
+const LOCAL_TICK_MS = 100
+const MAX_LOCAL_PREDICT_STEPS = 1
 
 const DIR_DELTA_CANVAS = {
   UP: [0, -1],
@@ -25,17 +26,37 @@ function getDirectionFromBody(body) {
   return 'UP'
 }
 
-function predictOneGridStep(snake, direction, gridSize) {
-  if (!snake?.alive || !snake.body?.length) return snake
-  const currentDirection = getDirectionFromBody(snake.body)
-  const dir = String(direction || '').toUpperCase()
-  const delta = DIR_DELTA_CANVAS[dir]
-  if (!delta) return snake
-  if (dir === currentDirection || OPPOSITE[currentDirection] === dir) return snake
+function cloneSnake(snake) {
+  if (!snake) return null
+  return {
+    ...snake,
+    body: Array.isArray(snake.body) ? snake.body.map((p) => ({ ...p })) : [],
+  }
+}
 
+function getNextDirection(currentDirection, queue) {
+  while (queue.length > 0) {
+    const dir = queue.shift()
+    if (!DIR_DELTA_CANVAS[dir]) continue
+    if (dir === currentDirection) continue
+    if (OPPOSITE[currentDirection] === dir) continue
+    return dir
+  }
+  return currentDirection
+}
+
+function moveSnakeOneStep(snake, queuedDirections, gridSize) {
+  if (!snake?.alive || !snake.body?.length) return snake
+
+  const currentDirection = getDirectionFromBody(snake.body)
+  const nextDirection = getNextDirection(currentDirection, queuedDirections)
+  const delta = DIR_DELTA_CANVAS[nextDirection] || DIR_DELTA_CANVAS[currentDirection]
   const head = snake.body[0]
   const nextHead = { x: head.x + delta[0], y: head.y + delta[1] }
-  if (nextHead.x < 0 || nextHead.y < 0 || nextHead.x >= gridSize || nextHead.y >= gridSize) return snake
+
+  if (nextHead.x < 0 || nextHead.y < 0 || nextHead.x >= gridSize || nextHead.y >= gridSize) {
+    return snake
+  }
 
   return {
     ...snake,
@@ -45,7 +66,18 @@ function predictOneGridStep(snake, direction, gridSize) {
 
 export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId, viewport, previewSnake }) {
   const canvasRef = useRef(null)
-  const localDirectionRef = useRef(null)
+  const localSnakeRef = useRef(null)
+  const localDirectionsRef = useRef([])
+  const localTimerRef = useRef(null)
+  const localPredictedStepsRef = useRef(0)
+  const lastServerTickAtRef = useRef(Date.now())
+
+  const stopLocalTimer = useCallback(() => {
+    if (localTimerRef.current) {
+      clearTimeout(localTimerRef.current)
+      localTimerRef.current = null
+    }
+  }, [])
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -103,11 +135,11 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
       }
     }
 
-    const localDirection = localDirectionRef.current
-    const shouldPredictLocal = localDirection && Date.now() - localDirection.ts <= LOCAL_PREDICTION_MS
-    const renderSnakes = shouldPredictLocal
-      ? snakes.map((s) => s.playerId === myPlayerId ? predictOneGridStep(s, localDirection.direction, gridSize) : s)
-      : snakes
+    const renderSnakes = snakes.map((s) => {
+      if (s.playerId !== myPlayerId) return s
+      if (!localSnakeRef.current || localPredictedStepsRef.current <= 0) return s
+      return localSnakeRef.current
+    })
 
     const sorted = [...renderSnakes].sort((a, b) => (a.alive ? 1 : -1))
 
@@ -117,20 +149,16 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
       const baseColor = snake.color
       const isInvincible = snake.alive && snake.invincibleUntil && snake.invincibleUntil > Date.now()
       let alpha
-      if (!snake.alive) {
-        alpha = 0.2
-      } else if (isInvincible) {
+      if (!snake.alive) alpha = 0.2
+      else if (isInvincible) {
         const pulsePhase = (Date.now() % 1200) / 1200
         alpha = 0.35 + 0.25 * Math.sin(pulsePhase * Math.PI * 2)
-      } else {
-        alpha = 1
-      }
+      } else alpha = 1
 
       ctx.globalAlpha = alpha
 
       snake.body.forEach((seg, i) => {
         if (viewport && (seg.x < camX || seg.x >= camX + viewport.size || seg.y < camY || seg.y >= camY + viewport.size)) return
-
         const rx = seg.x - camX
         const ry = seg.y - camY
         const x = rx * tileSize + 1
@@ -148,7 +176,6 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
       if (snake.alive && snake.body.length >= 2) {
         const head = snake.body[0]
         const neck = snake.body[1]
-
         if (viewport && (head.x < camX || head.x >= camX + viewport.size || head.y < camY || head.y >= camY + viewport.size)) {
           ctx.globalAlpha = 1
           continue
@@ -248,7 +275,6 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
         const by = ry * tileSize + tileSize / 2
         const bHalf = tileSize * 0.62
         const bRad  = tileSize * 0.24
-
         const angle = bullet.dx !== 0
           ? (bullet.dx > 0 ? 0 : Math.PI)
           : (bullet.dy > 0 ? Math.PI / 2 : -Math.PI / 2)
@@ -325,6 +351,32 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
     }
   }, [snakes, food, bullets, gridSize, myPlayerId, viewport, previewSnake])
 
+  const runLocalTick = useCallback(() => {
+    stopLocalTimer()
+    if (!localSnakeRef.current || localDirectionsRef.current.length === 0) return
+    if (localPredictedStepsRef.current >= MAX_LOCAL_PREDICT_STEPS) return
+
+    localSnakeRef.current = moveSnakeOneStep(localSnakeRef.current, localDirectionsRef.current, gridSize)
+    localPredictedStepsRef.current += 1
+    draw()
+  }, [draw, gridSize, stopLocalTimer])
+
+  const scheduleLocalTick = useCallback(() => {
+    if (localTimerRef.current) return
+    const elapsed = Date.now() - lastServerTickAtRef.current
+    const delay = Math.max(0, LOCAL_TICK_MS - elapsed)
+    localTimerRef.current = setTimeout(runLocalTick, delay)
+  }, [runLocalTick])
+
+  useEffect(() => {
+    const mySnake = snakes.find((s) => s.playerId === myPlayerId)
+    localSnakeRef.current = cloneSnake(mySnake)
+    localPredictedStepsRef.current = 0
+    lastServerTickAtRef.current = Date.now()
+    stopLocalTimer()
+    draw()
+  }, [draw, myPlayerId, snakes, stopLocalTimer])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -344,19 +396,27 @@ export default function GameCanvas({ snakes, food, bullets, gridSize, myPlayerId
   }, [draw])
 
   useEffect(() => {
-    localDirectionRef.current = null
-    draw()
-  }, [draw, snakes])
-
-  useEffect(() => {
     const onLocalDirection = (e) => {
-      localDirectionRef.current = e.detail
-      draw()
+      const dir = String(e.detail?.direction || '').toUpperCase()
+      if (!DIR_DELTA_CANVAS[dir]) return
+
+      const baseSnake = localSnakeRef.current || cloneSnake(snakes.find((s) => s.playerId === myPlayerId))
+      if (!baseSnake?.alive) return
+
+      const currentDirection = localDirectionsRef.current.length > 0
+        ? localDirectionsRef.current[localDirectionsRef.current.length - 1]
+        : getDirectionFromBody(baseSnake.body)
+
+      if (dir !== currentDirection && OPPOSITE[currentDirection] !== dir) {
+        localSnakeRef.current = baseSnake
+        localDirectionsRef.current = [dir]
+        scheduleLocalTick()
+      }
     }
 
     window.addEventListener('snake_local_direction', onLocalDirection)
     return () => window.removeEventListener('snake_local_direction', onLocalDirection)
-  }, [draw])
+  }, [myPlayerId, scheduleLocalTick, snakes])
 
   const hasInvincibleSnake = snakes.some((s) => s.invincibleUntil)
   const hasBoostingSnake = snakes.some((s) => s.boostActive)
