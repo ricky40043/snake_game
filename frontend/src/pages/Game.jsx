@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { socket } from '../socket'
 import { getPlayerId, getPlayerName, savePlayerId, getHostId } from '../storage'
@@ -6,7 +6,6 @@ import { useGame } from '../App'
 import GameCanvas from '../components/GameCanvas'
 import GameOver from '../components/GameOver'
 import PausePanel from '../components/PausePanel'
-import { inferSnakeDirection, isOppositeDirection } from '../gameMotion'
 
 const DIR_MAP = {
   ArrowUp: 'UP', w: 'UP', W: 'UP',
@@ -495,8 +494,6 @@ export default function Game() {
   const roomId = params.get('room')
   const { state } = useGame()
   const [followMe, setFollowMe] = useState(true)
-  const [pendingDirection, setPendingDirection] = useState(null)
-  const mySnake = state.snakes.find((snake) => snake.playerId === state.myPlayerId)
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -525,27 +522,6 @@ export default function Game() {
       navigate('/')
     }
   }, [state.error, navigate])
-
-  // Keep the visual prediction until the next authoritative tick acknowledges it.
-  useEffect(() => {
-    setPendingDirection((pending) => {
-      if (!pending || !mySnake?.alive) return null
-      const serverDirection = inferSnakeDirection(mySnake)
-      if (!serverDirection || serverDirection === pending || isOppositeDirection(serverDirection, pending)) {
-        return null
-      }
-      return pending
-    })
-  }, [state.tick, mySnake?.alive, mySnake?.direction])
-
-  const queueDirection = useCallback((dir) => {
-    if (state.startCountdown || state.tutorialActive) return
-    const serverDirection = inferSnakeDirection(mySnake)
-    // Match the server's anti-reversal rule so prediction can never show an illegal move.
-    if (serverDirection && isOppositeDirection(serverDirection, dir)) return
-    setPendingDirection(dir)
-    socket.emit('change_direction', { roomId, direction: dir })
-  }, [roomId, state.startCountdown, state.tutorialActive, mySnake])
 
   // ── Keyboard: direction + space pause ────────────────────────────────────
   const handleKey = useCallback((e) => {
@@ -583,8 +559,9 @@ export default function Game() {
     const dir = DIR_MAP[e.key]
     if (!dir) return
     e.preventDefault()
-    queueDirection(dir)
-  }, [roomId, state.isHost, state.paused, state.status, state.boostEnabled, state.attackUnlocked, queueDirection])
+    if (state.startCountdown || state.tutorialActive) return  // wait for countdown/tutorial
+    socket.emit('change_direction', { roomId, direction: dir })
+  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown, state.tutorialActive, state.boostEnabled, state.attackUnlocked])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -592,7 +569,8 @@ export default function Game() {
   }, [handleKey])
 
   function sendDir(dir) {
-    queueDirection(dir)
+    if (state.startCountdown || state.tutorialActive) return
+    socket.emit('change_direction', { roomId, direction: dir })
   }
 
   function sendShoot() {
@@ -603,6 +581,7 @@ export default function Game() {
     if (state.status === 'playing' && !state.paused && state.boostEnabled) socket.emit('toggle_boost', { roomId })
   }
 
+  const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
   const isAlive = mySnake?.alive ?? true
 
   // ── Death / revenge kill toasts ──────────────────────────────────────────
@@ -664,18 +643,14 @@ export default function Game() {
   const myHead = state.respawnPreview
     ? state.respawnPreview.body[0]
     : mySnake?.body?.[0]
+  let viewport = null
   const currentGridSize = state.gridSize || 20
-  const hasCameraTarget = Boolean(myHead)
-  const viewport = useMemo(() => {
-    // Only apply viewport when the grid is larger than the viewport window.
-    if (!isMobile || !followMe || !hasCameraTarget || currentGridSize <= VIEWPORT_SIZE) return null
-    // The canvas follows its interpolated local head. A fixed target is only needed
-    // while showing the stationary respawn preview.
-    return {
-      size: VIEWPORT_SIZE,
-      target: state.respawnPreview ? state.respawnPreview.body[0] : null,
-    }
-  }, [isMobile, followMe, hasCameraTarget, currentGridSize, state.respawnPreview])
+  // Only apply viewport when grid is larger than the viewport window; otherwise show full map
+  if (isMobile && followMe && myHead && currentGridSize > VIEWPORT_SIZE) {
+    const camX = Math.max(0, Math.min(currentGridSize - VIEWPORT_SIZE, myHead.x - Math.floor(VIEWPORT_SIZE / 2)))
+    const camY = Math.max(0, Math.min(currentGridSize - VIEWPORT_SIZE, myHead.y - Math.floor(VIEWPORT_SIZE / 2)))
+    viewport = { size: VIEWPORT_SIZE, camX, camY }
+  }
 
   // ── Top-3 leaderboard data ────────────────────────────────────────────────
   const MEDALS = ['🥇', '🥈', '🥉']
@@ -861,9 +836,6 @@ export default function Game() {
               myPlayerId={state.myPlayerId}
               viewport={viewport}
               previewSnake={state.respawnPreview}
-              tickMs={gameTickMs}
-              moving={state.status === 'playing' && !state.paused && !state.startCountdown && !state.tutorialActive}
-              localDirection={pendingDirection || inferSnakeDirection(mySnake)}
             />
 
             {/* ── Mobile viewport toggle button ─────────────────── */}

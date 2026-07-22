@@ -97,7 +97,7 @@ docker-compose up --build
 | 前端 | React 18 + Vite + Tailwind CSS |
 | 後端 | Node.js + Express + Socket.io |
 | 即時通訊 | WebSocket（Socket.io） |
-| 遊戲邏輯 | 伺服器主控（預設 100ms/tick）＋前端預測與 60 FPS 插值 |
+| 遊戲邏輯 | 伺服器主控（120ms/tick），防作弊 |
 | 資料儲存 | 純記憶體（無需資料庫） |
 | 部署 | Docker 單容器 |
 
