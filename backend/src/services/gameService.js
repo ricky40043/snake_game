@@ -1,8 +1,8 @@
 const config = require('../config')
 const roomService = require('./roomService')
 const stats = require('./stats')
+const { enqueueDirection, consumeDirection, resetDirectionQueue } = require('./directionQueue')
 
-const OPPOSITE = { UP: 'DOWN', DOWN: 'UP', LEFT: 'RIGHT', RIGHT: 'LEFT' }
 const DIR_DELTA = {
   UP: { dx: 0, dy: -1 },
   DOWN: { dx: 0, dy: 1 },
@@ -186,6 +186,7 @@ function startGame(io, roomId) {
       body: buildInitialBody(spawn.startX, spawn.startY, spawn.dir),
       direction: spawn.dir,
       nextDirection: spawn.dir,
+      directionQueue: [],
       alive: true,
       score: 0,
       color: player.color,
@@ -383,9 +384,7 @@ function _tick(io, roomId) {
 
   // ── Phase 1: Apply buffered direction ─────────────────────────────
   for (const snake of aliveSnakes) {
-    if (snake.nextDirection && OPPOSITE[snake.direction] !== snake.nextDirection) {
-      snake.direction = snake.nextDirection
-    }
+    consumeDirection(snake)
   }
 
   // ── Phase 1.5: Boost extra move + HP deduction ────────────────────
@@ -432,8 +431,7 @@ function _tick(io, roomId) {
             const ny = neck.y + d2.dy
             if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
               snake.body.unshift({ x: nx, y: ny })
-              snake.direction = newDir
-              snake.nextDirection = newDir
+              resetDirectionQueue(snake, newDir)
               bounced = true
               break
             }
@@ -563,8 +561,7 @@ function _tick(io, roomId) {
           const ny = neck.y + d.dy
           if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
             snake.body.unshift({ x: nx, y: ny })
-            snake.direction = newDir
-            snake.nextDirection = newDir
+            resetDirectionQueue(snake, newDir)
             bounced = true
             break
           }
@@ -766,8 +763,7 @@ function respawnPlayer(game, playerId) {
   snake.pendingRespawn = null
   if (!pos) return
   snake.body = buildInitialBody(pos.x, pos.y, pos.dir)
-  snake.direction = pos.dir
-  snake.nextDirection = pos.dir
+  resetDirectionQueue(snake, pos.dir)
   snake.alive = true
   snake.invincibleUntil = Date.now() + INVINCIBLE_MS
   snake.boostActive = false
@@ -779,10 +775,7 @@ function handleDirectionChange(roomId, playerId, direction) {
   if (!room || !room.game) return
   const snake = room.game.snakes[playerId]
   if (!snake || !snake.alive) return
-  const dir = direction.toUpperCase()
-  if (!DIR_DELTA[dir]) return
-  if (OPPOSITE[snake.direction] === dir) return
-  snake.nextDirection = dir
+  enqueueDirection(snake, direction)
 }
 
 // Kill snake as if it died in-game (timed: enters respawn queue; classic: permanent death)
@@ -1046,6 +1039,7 @@ function addPlayerToGame(roomId, playerId) {
     body: buildInitialBody(pos.x, pos.y, pos.dir),
     direction: pos.dir,
     nextDirection: pos.dir,
+    directionQueue: [],
     alive: true,
     score: 0,
     color: player.color,

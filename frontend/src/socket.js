@@ -9,27 +9,52 @@ export const socket = io(URL, {
   upgrade: false,
 })
 
-// Small client-side input guard:
-// - blocks accidental duplicate direction spam inside one visual reaction window
-// - keeps rapid different directions possible, so cornering still feels responsive
 const rawEmit = socket.emit.bind(socket)
 let lastDirection = null
 let lastDirectionAt = 0
-const DUPLICATE_DIRECTION_GUARD_MS = 70
+const DUPLICATE_DIRECTION_GUARD_MS = 45
+const DIRECTION_ACK_TIMEOUT_MS = 600
 
-socket.emit = (eventName, payload, ...args) => {
-  if (eventName === 'change_direction' && payload?.direction) {
-    const now = performance.now()
-    const direction = String(payload.direction).toUpperCase()
-
-    if (direction === lastDirection && now - lastDirectionAt < DUPLICATE_DIRECTION_GUARD_MS) {
-      return socket
-    }
-
-    lastDirection = direction
-    lastDirectionAt = now
-    payload = { ...payload, direction }
+/**
+ * Sends a direction without Socket.IO's disconnected-event buffering. A stale
+ * turn arriving after reconnect is worse than a visible rejected input in a
+ * real-time snake game, so callers always receive a concrete result.
+ */
+export function emitDirection({ roomId, direction, inputId }, acknowledge = () => {}) {
+  const normalized = String(direction || '').toUpperCase()
+  if (!socket.connected) {
+    socket.connect()
+    acknowledge({ accepted: false, reason: 'disconnected', direction: normalized, inputId })
+    return false
   }
 
-  return rawEmit(eventName, payload, ...args)
+  const now = performance.now()
+  if (normalized === lastDirection && now - lastDirectionAt < DUPLICATE_DIRECTION_GUARD_MS) {
+    acknowledge({ accepted: false, reason: 'duplicate_client', direction: normalized, inputId })
+    return false
+  }
+
+  lastDirection = normalized
+  lastDirectionAt = now
+
+  let settled = false
+  const timeoutId = window.setTimeout(() => {
+    if (settled) return
+    settled = true
+    acknowledge({ accepted: false, reason: 'timeout', direction: normalized, inputId })
+  }, DIRECTION_ACK_TIMEOUT_MS)
+
+  rawEmit('change_direction', { roomId, direction: normalized, inputId }, (result = {}) => {
+    if (settled) return
+    settled = true
+    window.clearTimeout(timeoutId)
+    acknowledge({ ...result, direction: normalized, inputId })
+  })
+
+  return true
 }
+
+socket.on('disconnect', () => {
+  lastDirection = null
+  lastDirectionAt = 0
+})
