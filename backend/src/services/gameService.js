@@ -246,7 +246,7 @@ function startGame(io, roomId) {
     snakes: Object.values(snakes).map((s) => ({
       playerId: s.playerId, body: s.body, color: s.color, name: s.name,
       alive: s.alive, score: s.score, invincibleUntil: s.invincibleUntil || null,
-      boostActive: s.boostActive, direction: s.direction,
+      boostActive: s.boostActive,
     })),
     food,
     paused: false,
@@ -366,7 +366,7 @@ function _tick(io, roomId) {
           name: s.name, alive: s.alive, score: s.score,
           lengthAtDeath: s.lengthAtDeath || null,
           invincibleUntil: s.invincibleUntil || null,
-          boostActive: s.boostActive ?? false, direction: s.direction,
+          boostActive: s.boostActive ?? false,
         })),
         food: game.food,
         timeLeft: Math.max(0, Math.ceil((game.duration - (now - game.startTime - (game.totalPausedMs || 0))) / 1000)),
@@ -716,7 +716,6 @@ function _tick(io, roomId) {
       lengthAtDeath: s.lengthAtDeath || null,
       invincibleUntil: s.invincibleUntil || null,
       boostActive: s.boostActive ?? false,
-      direction: s.direction,
     })),
     food: game.food,
   }
@@ -1014,7 +1013,7 @@ function resizeGameMap(io, roomId, newGridSize) {
     gridSize: newGridSize,
     snakes: Object.values(game.snakes).map((s) => ({
       playerId: s.playerId, body: s.body, color: s.color,
-      name: s.name, alive: s.alive, score: s.score, direction: s.direction,
+      name: s.name, alive: s.alive, score: s.score,
     })),
     food: game.food,
   })
