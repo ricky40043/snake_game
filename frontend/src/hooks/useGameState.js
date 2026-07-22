@@ -91,6 +91,7 @@ export function useGameState() {
         gridSize,
         mode: mode || 'timed',
         duration: duration || 180,
+        settings: { ...prev.settings, tickMs },
         snakes,
         food,
         bullets: [],
