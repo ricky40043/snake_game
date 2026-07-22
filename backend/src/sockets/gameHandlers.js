@@ -1,53 +1,15 @@
 const roomService = require('../services/roomService')
 const gameService = require('../services/gameService')
 const config = require('../config')
+const { enqueueDirection } = require('../services/directionQueue')
 
-const OPPOSITE = { UP: 'DOWN', DOWN: 'UP', LEFT: 'RIGHT', RIGHT: 'LEFT' }
-const DIR_DELTA = { UP: true, DOWN: true, LEFT: true, RIGHT: true }
-const DIRECTION_BUFFER_GRACE_MS = 8
-
-function scheduleBufferedDirection(room, snake) {
-  if (snake.bufferedDirectionTimer) return
-
-  snake.bufferedDirectionTimer = setTimeout(() => {
-    snake.bufferedDirectionTimer = null
-    if (!snake.alive || !snake.bufferedDirection) return
-
-    const dir = snake.bufferedDirection
-    snake.bufferedDirection = null
-
-    const baseDir = snake.nextDirection || snake.direction
-    if (!DIR_DELTA[dir]) return
-    if (dir === baseDir) return
-    if (OPPOSITE[baseDir] === dir) return
-
-    snake.nextDirection = dir
-  }, Math.max(40, Number(room.game?.tickMs || config.tickMs) + DIRECTION_BUFFER_GRACE_MS))
-}
-
-function applyDirectionInput(room, playerId, direction) {
-  if (!room?.game || room.status !== 'playing' || room.game.paused) return
+function applyDirectionInput(room, playerId, direction, inputId = null) {
+  if (!room?.game || room.status !== 'playing') return { accepted: false, reason: 'not_playing' }
+  if (room.game.paused) return { accepted: false, reason: 'paused' }
 
   const snake = room.game.snakes[playerId]
-  if (!snake || !snake.alive) return
-
-  const dir = String(direction || '').toUpperCase()
-  if (!DIR_DELTA[dir]) return
-
-  const activeQueuedDir = snake.nextDirection || snake.direction
-  if (dir === activeQueuedDir) return
-
-  if (snake.nextDirection && snake.nextDirection !== snake.direction) {
-    const bufferedBaseDir = snake.bufferedDirection || snake.nextDirection
-    if (OPPOSITE[bufferedBaseDir] === dir || bufferedBaseDir === dir) return
-
-    snake.bufferedDirection = dir
-    scheduleBufferedDirection(room, snake)
-    return
-  }
-
-  if (OPPOSITE[snake.direction] === dir) return
-  snake.nextDirection = dir
+  if (!snake || !snake.alive) return { accepted: false, reason: 'not_alive' }
+  return enqueueDirection(snake, direction, inputId)
 }
 
 function registerGameHandlers(io, socket, socketMap) {
@@ -100,11 +62,15 @@ function registerGameHandlers(io, socket, socketMap) {
     gameService.processShoot(room.game, info.playerId)
   })
 
-  socket.on('change_direction', ({ roomId, direction } = {}) => {
+  socket.on('change_direction', ({ roomId, direction, inputId } = {}, acknowledge = () => {}) => {
     const info = socketMap.get(socket.id)
-    if (!info) return
+    if (!info) {
+      acknowledge({ accepted: false, reason: 'not_in_room', inputId })
+      return
+    }
     const room = roomService.getRoom(roomId || info.roomId)
-    applyDirectionInput(room, info.playerId, direction)
+    const result = applyDirectionInput(room, info.playerId, direction, inputId)
+    acknowledge({ ...result, inputId, direction: String(direction || '').toUpperCase() })
   })
 
   socket.on('pause_game', ({ roomId } = {}) => {

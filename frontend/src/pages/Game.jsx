@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { socket } from '../socket'
+import { socket, emitDirection } from '../socket'
 import { getPlayerId, getPlayerName, savePlayerId, getHostId } from '../storage'
 import { useGame } from '../App'
 import GameCanvas from '../components/GameCanvas'
@@ -12,6 +12,20 @@ const DIR_MAP = {
   ArrowDown: 'DOWN', s: 'DOWN', S: 'DOWN',
   ArrowLeft: 'LEFT', a: 'LEFT', A: 'LEFT',
   ArrowRight: 'RIGHT', d: 'RIGHT', D: 'RIGHT',
+}
+
+const DIR_SYMBOL = { UP: '↑', DOWN: '↓', LEFT: '←', RIGHT: '→' }
+const DIRECTION_REJECTION_TEXT = {
+  duplicate_client: '已送出相同方向',
+  same_direction: '目前已是這個方向',
+  opposite_direction: '不能直接回頭',
+  queue_full: '操作太快，請再按一次',
+  paused: '遊戲已暫停',
+  not_alive: '等待復活',
+  not_playing: '遊戲尚未開始',
+  not_in_room: '尚未連入房間',
+  disconnected: '連線恢復中，請再按一次',
+  timeout: '伺服器未確認，請再按一次',
 }
 
 function TutorialDemoCanvas({ demo, color, isTimed, wallDeath, attackOn }) {
@@ -494,6 +508,16 @@ export default function Game() {
   const roomId = params.get('room')
   const { state } = useGame()
   const [followMe, setFollowMe] = useState(true)
+  const [controlFeedback, setControlFeedback] = useState(null)
+  const directionInputIdRef = useRef(0)
+  const latestDirectionInputIdRef = useRef(0)
+  const controlFeedbackTimerRef = useRef(null)
+  const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
+  const isAlive = mySnake?.alive ?? true
+  const canControl = state.status === 'playing' && !state.paused && isAlive &&
+    !state.startCountdown && !state.tutorialActive
+
+  useEffect(() => () => clearTimeout(controlFeedbackTimerRef.current), [])
 
   useEffect(() => {
     if (!roomId) { navigate('/'); return }
@@ -559,18 +583,63 @@ export default function Game() {
     const dir = DIR_MAP[e.key]
     if (!dir) return
     e.preventDefault()
-    if (state.startCountdown || state.tutorialActive) return  // wait for countdown/tutorial
-    socket.emit('change_direction', { roomId, direction: dir })
-  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown, state.tutorialActive, state.boostEnabled, state.attackUnlocked])
+    sendDirection(dir)
+  }, [roomId, state.isHost, state.paused, state.status, state.mode, state.startCountdown, state.tutorialActive, state.boostEnabled, state.attackUnlocked, canControl, isAlive])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [handleKey])
 
-  function sendDir(dir) {
-    if (state.startCountdown || state.tutorialActive) return
-    socket.emit('change_direction', { roomId, direction: dir })
+  function showControlFeedback(feedback, duration = 650) {
+    clearTimeout(controlFeedbackTimerRef.current)
+    setControlFeedback(feedback)
+    controlFeedbackTimerRef.current = setTimeout(() => setControlFeedback(null), duration)
+  }
+
+  function sendDirection(dir) {
+    if (!canControl) {
+      const reason = state.paused ? 'paused' : !isAlive ? 'not_alive' : 'not_playing'
+      showControlFeedback({ direction: dir, status: 'rejected', text: DIRECTION_REJECTION_TEXT[reason] })
+      return
+    }
+
+    const inputId = ++directionInputIdRef.current
+    latestDirectionInputIdRef.current = inputId
+    showControlFeedback({ direction: dir, status: 'pending', text: `${DIR_SYMBOL[dir]} 已送出` }, 900)
+
+    emitDirection({ roomId, direction: dir, inputId }, (result) => {
+      if (inputId !== latestDirectionInputIdRef.current) return
+      if (result.accepted) {
+        showControlFeedback({ direction: dir, status: 'accepted', text: `${DIR_SYMBOL[dir]} 已接收` }, 420)
+        return
+      }
+
+      showControlFeedback({
+        direction: dir,
+        status: 'rejected',
+        text: DIRECTION_REJECTION_TEXT[result.reason] || '方向未被接受',
+      }, 850)
+    })
+  }
+
+  function handleDirectionPointerDown(event, dir) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    sendDirection(dir)
+  }
+
+  function handleDirectionClick(event, dir) {
+    // Keyboard activation produces click.detail === 0. Pointer input was
+    // already handled on pointerdown so it must not be sent twice on release.
+    if (event.detail === 0) sendDirection(dir)
+  }
+
+  function directionFeedbackClass(dir) {
+    if (controlFeedback?.direction !== dir) return 'border-white/10'
+    if (controlFeedback.status === 'accepted') return 'border-green-300 ring-4 ring-green-400/45 bg-green-900/70'
+    if (controlFeedback.status === 'rejected') return 'border-orange-300 ring-4 ring-orange-400/45 bg-orange-900/70'
+    return 'border-blue-300 ring-4 ring-blue-400/45 bg-blue-900/70'
   }
 
   function sendShoot() {
@@ -580,9 +649,6 @@ export default function Game() {
   function sendBoost() {
     if (state.status === 'playing' && !state.paused && state.boostEnabled) socket.emit('toggle_boost', { roomId })
   }
-
-  const mySnake = state.snakes.find((s) => s.playerId === state.myPlayerId)
-  const isAlive = mySnake?.alive ?? true
 
   // ── Death / revenge kill toasts ──────────────────────────────────────────
   const [deathMsg, setDeathMsg] = useState(null)
@@ -1045,40 +1111,98 @@ export default function Game() {
 
       {/* Mobile controls — hidden during overlays so the full game/tutorial fits on screen */}
       {state.status !== 'finished' && !state.tutorialActive && !state.startCountdown && (
-        <div className="sm:hidden flex items-end justify-center gap-4 pb-4 pt-2 shrink-0">
-          {/* D-pad: keep cross symmetric */}
-          <div className="flex flex-col items-center gap-2">
-            <button onPointerDown={() => sendDir('UP')}
-              className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↑</button>
-            <div className="flex gap-2">
-              <button onPointerDown={() => sendDir('LEFT')}
-                className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">←</button>
-              <button onPointerDown={() => sendDir('DOWN')}
-                className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">↓</button>
-              <button onPointerDown={() => sendDir('RIGHT')}
-                className="w-14 h-14 bg-[#21262d] active:bg-[#30363d] rounded-xl text-2xl flex items-center justify-center">→</button>
-            </div>
+        <div
+          className="sm:hidden flex flex-col items-center px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1 shrink-0 touch-none select-none"
+          style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
+          onContextMenu={(event) => event.preventDefault()}
+          data-testid="mobile-controls"
+        >
+          <div
+            aria-live="polite"
+            className={`h-5 mb-1 text-xs font-semibold transition-colors ${
+              controlFeedback?.status === 'accepted'
+                ? 'text-green-300'
+                : controlFeedback?.status === 'rejected'
+                  ? 'text-orange-300'
+                  : 'text-blue-300'
+            }`}
+          >
+            {controlFeedback?.text || (canControl ? '觸碰方向鍵立即送出' : state.paused ? '遊戲已暫停' : '等待可操作')}
           </div>
-          {/* Boost + Attack column — aligned to bottom of d-pad */}
-          <div className="flex flex-col gap-2 items-center">
-            {state.boostEnabled && (
-              <button onPointerDown={sendBoost}
-                className={`w-14 h-14 rounded-xl text-2xl flex items-center justify-center border-2 transition ${
-                  mySnake?.boostActive
-                    ? 'bg-yellow-500 active:bg-yellow-400 border-yellow-300'
-                    : 'bg-[#21262d] active:bg-[#30363d] border-gray-600'
-                }`}>
-                🚀
+
+          <div className="flex items-end justify-center gap-3 w-full">
+            {/* D-pad: 68px touch targets with immediate pointer-down input */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                aria-label="向上"
+                data-testid="direction-up"
+                disabled={!canControl}
+                onPointerDown={(event) => handleDirectionPointerDown(event, 'UP')}
+                onClick={(event) => handleDirectionClick(event, 'UP')}
+                className={`w-[4.25rem] h-[4.25rem] touch-none bg-[#21262d] active:bg-[#30363d] active:scale-90 disabled:opacity-35 disabled:active:scale-100 rounded-2xl text-3xl font-bold flex items-center justify-center border shadow-lg transition-[transform,background-color,box-shadow] duration-75 ${directionFeedbackClass('UP')}`}
+              >↑</button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-label="向左"
+                  data-testid="direction-left"
+                  disabled={!canControl}
+                  onPointerDown={(event) => handleDirectionPointerDown(event, 'LEFT')}
+                  onClick={(event) => handleDirectionClick(event, 'LEFT')}
+                  className={`w-[4.25rem] h-[4.25rem] touch-none bg-[#21262d] active:bg-[#30363d] active:scale-90 disabled:opacity-35 disabled:active:scale-100 rounded-2xl text-3xl font-bold flex items-center justify-center border shadow-lg transition-[transform,background-color,box-shadow] duration-75 ${directionFeedbackClass('LEFT')}`}
+                >←</button>
+                <button
+                  type="button"
+                  aria-label="向下"
+                  data-testid="direction-down"
+                  disabled={!canControl}
+                  onPointerDown={(event) => handleDirectionPointerDown(event, 'DOWN')}
+                  onClick={(event) => handleDirectionClick(event, 'DOWN')}
+                  className={`w-[4.25rem] h-[4.25rem] touch-none bg-[#21262d] active:bg-[#30363d] active:scale-90 disabled:opacity-35 disabled:active:scale-100 rounded-2xl text-3xl font-bold flex items-center justify-center border shadow-lg transition-[transform,background-color,box-shadow] duration-75 ${directionFeedbackClass('DOWN')}`}
+                >↓</button>
+                <button
+                  type="button"
+                  aria-label="向右"
+                  data-testid="direction-right"
+                  disabled={!canControl}
+                  onPointerDown={(event) => handleDirectionPointerDown(event, 'RIGHT')}
+                  onClick={(event) => handleDirectionClick(event, 'RIGHT')}
+                  className={`w-[4.25rem] h-[4.25rem] touch-none bg-[#21262d] active:bg-[#30363d] active:scale-90 disabled:opacity-35 disabled:active:scale-100 rounded-2xl text-3xl font-bold flex items-center justify-center border shadow-lg transition-[transform,background-color,box-shadow] duration-75 ${directionFeedbackClass('RIGHT')}`}
+                >→</button>
+              </div>
+            </div>
+
+            {/* Boost + Attack column — aligned to bottom of d-pad */}
+            <div className="flex flex-col gap-2 items-center">
+              {state.boostEnabled && (
+                <button
+                  type="button"
+                  aria-label="加速"
+                  onPointerDown={(event) => { event.preventDefault(); sendBoost() }}
+                  className={`w-[4.25rem] h-[4.25rem] touch-none active:scale-90 rounded-2xl text-3xl flex items-center justify-center border-2 shadow-lg transition-transform duration-75 ${
+                    mySnake?.boostActive
+                      ? 'bg-yellow-500 active:bg-yellow-400 border-yellow-300'
+                      : 'bg-[#21262d] active:bg-[#30363d] border-gray-600'
+                  }`}
+                >
+                  🚀
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label="攻擊"
+                disabled={!state.attackUnlocked || !canControl}
+                onPointerDown={(event) => { event.preventDefault(); sendShoot() }}
+                className={`w-[4.25rem] h-[4.25rem] touch-none active:scale-90 disabled:active:scale-100 rounded-2xl text-3xl flex items-center justify-center border-2 shadow-lg transition-transform duration-75 ${
+                  state.attackUnlocked && canControl
+                    ? 'bg-red-700 active:bg-red-600 border-red-500'
+                    : 'bg-gray-700 border-gray-600 opacity-40'
+                }`}
+              >
+                ⚡
               </button>
-            )}
-            <button onPointerDown={sendShoot}
-              className={`w-14 h-14 rounded-xl text-2xl flex items-center justify-center border-2 transition ${
-                state.attackUnlocked
-                  ? 'bg-red-700 active:bg-red-600 border-red-500'
-                  : 'bg-gray-700 border-gray-600 opacity-40'
-              }`}>
-              ⚡
-            </button>
+            </div>
           </div>
         </div>
       )}
